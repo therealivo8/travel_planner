@@ -1,0 +1,70 @@
+@import "tailwindcss";
+@import "../styles/tokens.css";
+
+@theme {
+  /* Primary — Road Blue */
+  --color-primary-50: #EFF6FF;
+  --color-primary-100: #DBEAFE;
+  --color-primary-500: #3B82F6;
+  --color-primary-600: #2563EB;
+  --color-primary-700: #1D4ED8;
+
+  /* Accent — Trail Amber */
+  --color-accent-400: #FBBF24;
+  --color-accent-500: #F59E0B;
+
+  /* Neutral — Stone */
+  --color-neutral-50: #FAFAF9;
+  --color-neutral-100: #F5F5F4;
+  --color-neutral-200: #E7E5E4;
+  --color-neutral-500: #78716C;
+  --color-neutral-900: #1C1917;
+
+  /* Semantic */
+  --color-success-500: #22C55E;
+  --color-warning-500: #F59E0B;
+  --color-error-500: #EF4444;
+
+  /* Typography */
+  --font-sans: var(--font-inter);
+  --font-mono: var(--font-jetbrains-mono);
+
+  /* Border radius */
+  --radius-card: 12px;
+  --radius-input: 8px;
+  --radius-button: 8px;
+}
+
+/* Base resets */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html {
+  height: 100%;
+}
+
+body {
+  min-height: 100%;
+  background-color: #FAFAF9;
+  color: #1C1917;
+  font-family: var(--font-inter), system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #F5F5F4;
+}
+::-webkit-scrollbar-thumb {
+  background: #E7E5E4;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #78716C;
+}
