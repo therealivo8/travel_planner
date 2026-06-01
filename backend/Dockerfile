@@ -6,12 +6,17 @@ WORKDIR /app
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
 # Copy dependency files first for layer caching
-COPY pyproject.toml .
+COPY pyproject.toml uv.lock* ./
 
-# Install dependencies
-RUN uv sync --frozen --no-dev 2>/dev/null || uv sync --no-dev
+# Install production dependencies only
+RUN uv sync --frozen --no-dev
 
 # Copy application code
 COPY . .
 
-CMD ["uv", "run", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+# Railway injects $PORT; fall back to 8000 for local docker builds
+ENV PORT=8000
+
+# Run migrations then start the server (railway.toml overrides this for Railway)
+CMD uv run alembic upgrade head && \
+    uv run uvicorn app.main:app --host 0.0.0.0 --port "$PORT"

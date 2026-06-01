@@ -77,31 +77,34 @@ On subsequent starts, just run:
 /usr/lib/postgresql/17/bin/pg_ctl -D /tmp/pgdata17 -o "-p 5433 -k /tmp" -l /tmp/pg.log start
 ```
 
-**Step 2 — Run the migration**
+**Step 2 — Copy and configure the env file**
 
 ```bash
 cd backend
+cp .env.example .env
+# The DATABASE_URL in .env should be:
+# DATABASE_URL=postgresql+asyncpg://node:postgres@127.0.0.1:5433/travel_planner
+```
+
+**Step 3 — Run the migration**
+
+```bash
 uv run alembic upgrade head
 ```
 
-**Step 3 — Start the backend**
+**Step 4 — Start the backend**
 
 ```bash
 cd backend
 uv run uvicorn app.main:app --reload --port 8000 &
 ```
 
-**Step 4 — Start the frontend**
+**Step 5 — Start the frontend**
 
 ```bash
 cd frontend
+pnpm install
 pnpm dev &
-```
-
-The `.env` for this environment is already configured:
-
-```
-DATABASE_URL=postgresql+asyncpg://node:postgres@127.0.0.1:5433/travel_planner
 ```
 
 To stop the background processes:
@@ -148,19 +151,68 @@ pnpm dev
 
 ---
 
+## Deploying to Production
+
+Recommended setup: **Vercel** (frontend) + **Railway** (backend + Postgres). Estimated cost: $0–5/mo for personal use.
+
+### 1. Push to GitHub
+
+Make sure your repo is on GitHub. Both platforms deploy directly from it.
+
+### 2. Deploy the backend on Railway
+
+1. Go to [railway.app](https://railway.app) → New Project → Deploy from GitHub repo
+2. Select the repo and set the **root directory** to `backend/`
+3. Railway auto-detects the Dockerfile and builds it
+4. Add a **Postgres plugin** (New → Database → PostgreSQL) — Railway injects `DATABASE_URL` automatically
+5. Set these environment variables in the Railway dashboard:
+
+| Variable | Value |
+|---|---|
+| `SECRET_KEY` | A random secret: `python -c "import secrets; print(secrets.token_hex(32))"` |
+| `ENVIRONMENT` | `production` |
+| `CORS_ORIGINS` | Your Vercel URL (set this after step 3, e.g. `https://your-app.vercel.app`) |
+
+6. Copy your Railway backend URL (e.g. `https://your-backend.railway.app`) — you need it for step 3.
+
+### 3. Deploy the frontend on Vercel
+
+1. Go to [vercel.com](https://vercel.com) → New Project → Import GitHub repo
+2. Set the **root directory** to `frontend/`
+3. Set this environment variable in the Vercel dashboard:
+
+| Variable | Value |
+|---|---|
+| `NEXT_PUBLIC_API_URL` | Your Railway backend URL, e.g. `https://your-backend.railway.app` |
+
+4. Deploy — Vercel builds and gives you a `your-app.vercel.app` URL
+5. Go back to Railway and update `CORS_ORIGINS` with that Vercel URL
+
+### 4. Verify
+
+```bash
+# Health check should return {"status": "ok", "db": "connected"}
+curl https://your-backend.railway.app/health
+```
+
+Every push to `main` auto-deploys to both platforms.
+
+---
+
 ## Environment Variables
 
-**`backend/.env`**
+**`backend/.env`** (copy from `backend/.env.example`)
 
-| Variable | Default | Description |
+| Variable | Dev default | Description |
 |---|---|---|
 | `DATABASE_URL` | `postgresql+asyncpg://postgres:postgres@db:5432/travel_planner` | Async SQLAlchemy connection string |
-| `SECRET_KEY` | `changeme` | App secret — change in production |
-| `ENVIRONMENT` | `development` | Controls CORS origins and SQL echo |
+| `SECRET_KEY` | `changeme` | App secret — **change in production** |
+| `ENVIRONMENT` | `development` | Controls SQL echo logging |
+| `CORS_ORIGINS` | `http://localhost:3000` | Comma-separated list of allowed frontend origins |
 
-**`frontend/.env.local`**
+**`frontend/.env.local`** (copy from `frontend/.env.local.example`)
 
-| Variable | Default | Description |
+| Variable | Dev default | Description |
 |---|---|---|
 | `NEXT_PUBLIC_API_URL` | `http://localhost:8000` | Backend base URL |
 

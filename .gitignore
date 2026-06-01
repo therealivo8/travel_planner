@@ -1,0 +1,31 @@
+# ── Environment files (never commit secrets) ───────────────────────────────────
+.env
+.env.local
+.env.*.local
+backend/.env
+frontend/.env.local
+
+# ── Frontend ───────────────────────────────────────────────────────────────────
+frontend/.next/
+frontend/out/
+frontend/node_modules/
+frontend/.pnpm-store/
+
+# ── Backend ────────────────────────────────────────────────────────────────────
+backend/.venv/
+backend/__pycache__/
+backend/**/__pycache__/
+backend/**/*.pyc
+backend/.mypy_cache/
+backend/.ruff_cache/
+
+# ── Database ───────────────────────────────────────────────────────────────────
+*.sql.bak
+
+# ── OS ─────────────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ── IDE ────────────────────────────────────────────────────────────────────────
+.vscode/settings.json
+.idea/
