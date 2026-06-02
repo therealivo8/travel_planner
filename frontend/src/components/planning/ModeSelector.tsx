@@ -18,7 +18,7 @@ const modes: {
   icon: React.ReactNode;
 }[] = [
   {
-    id: "point-to-point",
+    id: "point_to_point",
     label: "Point-to-Point",
     description: "Plan a route from start to finish",
     icon: (

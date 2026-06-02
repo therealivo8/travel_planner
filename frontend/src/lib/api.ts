@@ -4,12 +4,29 @@ type RequestOptions = Omit<RequestInit, "body"> & {
   body?: unknown;
 };
 
+// Module-level token store — set by AuthContext after login/refresh.
+let _accessToken: string | null = null;
+
+export function setApiToken(token: string | null): void {
+  _accessToken = token;
+}
+
+export function getApiToken(): string | null {
+  return _accessToken;
+}
+
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const { body, headers, ...rest } = options;
 
+  const authHeader: Record<string, string> = _accessToken
+    ? { Authorization: `Bearer ${_accessToken}` }
+    : {};
+
   const res = await fetch(`${API_URL}${path}`, {
+    credentials: "include",
     headers: {
       "Content-Type": "application/json",
+      ...authHeader,
       ...headers,
     },
     body: body !== undefined ? JSON.stringify(body) : undefined,
@@ -43,3 +60,10 @@ export const api = {
   delete: <T>(path: string, options?: Omit<RequestOptions, "method" | "body">) =>
     request<T>(path, { ...options, method: "DELETE" }),
 };
+
+/** Geocode an address via the backend proxy (keeps Maps key server-side). */
+export function geocodeAddress(q: string) {
+  return api.get<{ address: string; lat: number; lng: number; place_id: string | null } | null>(
+    `/geocode?q=${encodeURIComponent(q)}`
+  );
+}

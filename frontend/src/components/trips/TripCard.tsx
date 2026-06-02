@@ -19,7 +19,7 @@ interface TripCardProps {
 }
 
 const modeLabel: Record<TripMode, string> = {
-  "point-to-point": "Point-to-Point",
+  point_to_point: "Point-to-Point",
   radius: "Radius",
 };
 

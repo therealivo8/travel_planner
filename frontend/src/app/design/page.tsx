@@ -50,7 +50,7 @@ function Swatch({ token, hex, usage }: { token: string; hex: string; usage: stri
 }
 
 export default function DesignPage() {
-  const [mode, setMode] = React.useState<"point-to-point" | "radius" | null>(null);
+  const [mode, setMode] = React.useState<"point_to_point" | "radius" | null>(null);
 
   return (
     <TooltipProvider>
@@ -208,7 +208,7 @@ export default function DesignPage() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 max-w-3xl">
                   <TripCard
                     title="Pacific Coast Highway"
-                    mode="point-to-point"
+                    mode="point_to_point"
                     status="planned"
                     distanceMi={650}
                     driveTimeMin={720}
@@ -223,7 +223,7 @@ export default function DesignPage() {
                   />
                   <TripCard
                     title="Route 66 Complete"
-                    mode="point-to-point"
+                    mode="point_to_point"
                     status="completed"
                     distanceMi={2278}
                     driveTimeMin={2100}
