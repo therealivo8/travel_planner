@@ -4,7 +4,7 @@ const PROTECTED_PREFIXES = ["/trips"];
 const AUTH_ROUTES = ["/login", "/register"];
 const REFRESH_COOKIE = "refresh_token";
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const hasRefreshCookie = request.cookies.has(REFRESH_COOKIE);
 

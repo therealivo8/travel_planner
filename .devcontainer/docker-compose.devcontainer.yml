@@ -1,0 +1,13 @@
+# Dev container shell — gives VS Code a container to attach to.
+# Postgres runs as a sidecar (via the base docker-compose.yml db service).
+services:
+  devcontainer:
+    image: mcr.microsoft.com/devcontainers/base:ubuntu-24.04
+    volumes:
+      - ..:/workspace:cached
+    command: sleep infinity
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/travel_planner
