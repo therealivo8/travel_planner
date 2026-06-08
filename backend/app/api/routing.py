@@ -8,7 +8,7 @@ from sqlalchemy.orm import selectinload
 
 from app.core.deps import CurrentUser
 from app.db.session import get_db
-from app.models.trip import Trip, Waypoint
+from app.models.trip import Trip
 from app.schemas.trip import GeocodeResult, RouteOut, TripOut
 from app.services import routes as route_svc
 

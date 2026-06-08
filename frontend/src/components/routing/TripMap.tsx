@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import React, { useEffect } from "react";
 import {
   Map,
   AdvancedMarker,
@@ -19,12 +19,12 @@ interface Props {
   endAddress: string | null;
   waypoints: Waypoint[];
   routePolyline: string | null;
+  layers?: React.ReactNode;
 }
 
 function RoutePolyline({ encodedPolyline }: { encodedPolyline: string }) {
   const map = useMap();
   const geometryLib = useMapsLibrary("geometry");
-  const [polyline, setPolyline] = useState<google.maps.Polyline | null>(null);
 
   useEffect(() => {
     if (!map || !geometryLib || !encodedPolyline) return;
@@ -37,16 +37,13 @@ function RoutePolyline({ encodedPolyline }: { encodedPolyline: string }) {
       strokeOpacity: 0.8,
       map,
     });
-    setPolyline(line);
 
-    // Fit map to route
     const bounds = new google.maps.LatLngBounds();
     path.forEach((p) => bounds.extend(p));
     map.fitBounds(bounds, { top: 40, right: 40, bottom: 40, left: 40 });
 
     return () => {
       line.setMap(null);
-      setPolyline(null);
     };
   }, [map, geometryLib, encodedPolyline]);
 
@@ -62,6 +59,7 @@ export function TripMap({
   endAddress,
   waypoints,
   routePolyline,
+  layers,
 }: Props) {
   const defaultCenter = { lat: startLat, lng: startLng };
 
@@ -107,6 +105,9 @@ export function TripMap({
 
       {/* Route polyline */}
       {routePolyline && <RoutePolyline encodedPolyline={routePolyline} />}
+
+      {/* Optional overlay layers (e.g. IsochroneLayer) */}
+      {layers}
     </Map>
   );
 }

@@ -79,6 +79,41 @@ export interface PaginatedTrips {
   page_size: number;
 }
 
+// Phase 4: Radius mode types
+
+export type SuggestionCategory = "park" | "restaurant" | "landmark" | "town" | "other";
+
+export interface RadiusSuggestion {
+  id: string;
+  trip_id: string;
+  place_id: string;
+  name: string;
+  address: string;
+  lat: number;
+  lng: number;
+  category: SuggestionCategory;
+  drive_seconds_from_start: number;
+  distance_meters_from_start: number;
+  rating: number | null;
+  selected: boolean;
+  created_at: string;
+}
+
+export interface RadiusDiscoverResponse {
+  isochrone_geojson: GeoJSONPolygon | Record<string, never>;
+  suggestions: RadiusSuggestion[];
+}
+
+export interface GeoJSONPolygon {
+  type: "Polygon";
+  coordinates: number[][][];
+}
+
+export interface RadiusSelectRequest {
+  suggestion_ids: string[];
+  generate_route: boolean;
+}
+
 // API response shapes
 
 export interface HealthResponse {

@@ -19,7 +19,7 @@ def verify_password(plain: str, hashed: str) -> bool:
 def _create_token(subject: str, expires_delta: timedelta, token_type: str) -> str:
     expire = datetime.now(UTC) + expires_delta
     payload = {"sub": subject, "exp": expire, "type": token_type}
-    return jwt.encode(payload, settings.secret_key, algorithm=settings.algorithm)
+    return str(jwt.encode(payload, settings.secret_key, algorithm=settings.algorithm))
 
 
 def create_access_token(user_id: str) -> str:

@@ -31,7 +31,7 @@ interface AuthContextValue extends AuthState {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+const API_URL = "/api";
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<AuthState>({
@@ -41,6 +41,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   });
 
   const tokenRef = useRef<string | null>(null);
+  // When login/register completes, we set this to prevent the concurrent
+  // refresh effect from overwriting the freshly-set auth state.
+  const loggedInRef = useRef(false);
 
   const setToken = useCallback((token: string) => {
     tokenRef.current = token;
@@ -60,7 +63,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  // On mount, try to refresh the session via httpOnly cookie
+  // On mount, try to restore the session via httpOnly refresh-token cookie.
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -72,7 +75,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (res.ok) {
           const data = (await res.json()) as { access_token: string };
           const user = await fetchMe(data.access_token);
-          if (!cancelled) {
+          if (!cancelled && !loggedInRef.current) {
             tokenRef.current = data.access_token;
             setApiToken(data.access_token);
             setState({ user, accessToken: data.access_token, isLoading: false });
@@ -82,7 +85,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } catch {
         /* no-op */
       }
-      if (!cancelled) {
+      if (!cancelled && !loggedInRef.current) {
         setState({ user: null, accessToken: null, isLoading: false });
       }
     })();
@@ -105,6 +108,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       const data = (await res.json()) as { access_token: string };
       const user = await fetchMe(data.access_token);
+      if (!user) throw new Error("Failed to fetch user profile after login");
+      loggedInRef.current = true;
       tokenRef.current = data.access_token;
       setApiToken(data.access_token);
       setState({ user, accessToken: data.access_token, isLoading: false });
@@ -126,6 +131,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       const data = (await res.json()) as { access_token: string };
       const user = await fetchMe(data.access_token);
+      if (!user) throw new Error("Failed to fetch user profile after registration");
+      loggedInRef.current = true;
       tokenRef.current = data.access_token;
       setApiToken(data.access_token);
       setState({ user, accessToken: data.access_token, isLoading: false });
@@ -134,6 +141,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 
   const logout = useCallback(() => {
+    loggedInRef.current = false;
     tokenRef.current = null;
     setApiToken(null);
     setState({ user: null, accessToken: null, isLoading: false });

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { MapPin } from "lucide-react";
@@ -15,13 +15,21 @@ const schema = z.object({
 });
 
 export default function LoginPage() {
-  const { login } = useAuth();
+  const { login, user, isLoading } = useAuth();
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
   const [serverError, setServerError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [loginSuccess, setLoginSuccess] = useState(false);
+
+  // Navigate only after auth state is committed and user is confirmed
+  useEffect(() => {
+    if (loginSuccess && !isLoading && user) {
+      router.push("/trips");
+    }
+  }, [loginSuccess, isLoading, user, router]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -39,10 +47,9 @@ export default function LoginPage() {
     setPending(true);
     try {
       await login(email, password);
-      router.push("/trips");
+      setLoginSuccess(true);
     } catch (err) {
       setServerError(err instanceof Error ? err.message : "Login failed");
-    } finally {
       setPending(false);
     }
   }

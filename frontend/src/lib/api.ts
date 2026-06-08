@@ -1,4 +1,4 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+const API_URL = "/api";
 
 type RequestOptions = Omit<RequestInit, "body"> & {
   body?: unknown;
@@ -66,4 +66,25 @@ export function geocodeAddress(q: string) {
   return api.get<{ address: string; lat: number; lng: number; place_id: string | null } | null>(
     `/geocode?q=${encodeURIComponent(q)}`
   );
+}
+
+import type { RadiusDiscoverResponse, RadiusSelectRequest, Trip } from "@/types";
+
+export function discoverRadius(tripId: string, categories?: string[]) {
+  const params = categories?.length
+    ? "?" + categories.map((c) => `categories=${encodeURIComponent(c)}`).join("&")
+    : "";
+  return api.post<RadiusDiscoverResponse>(`/trips/${tripId}/radius/discover${params}`);
+}
+
+export function getRadiusSuggestions(tripId: string) {
+  return api.get<RadiusDiscoverResponse>(`/trips/${tripId}/radius/suggestions`);
+}
+
+export function selectSuggestions(tripId: string, body: RadiusSelectRequest) {
+  return api.post<Trip>(`/trips/${tripId}/radius/select`, body);
+}
+
+export function deselectSuggestion(tripId: string, suggestionId: string) {
+  return api.delete(`/trips/${tripId}/radius/suggestions/${suggestionId}/select`);
 }

@@ -62,6 +62,8 @@ class Trip(Base):
     total_drive_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
     route_polyline: Mapped[str | None] = mapped_column(Text, nullable=True)
     route_raw_response: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    # Phase 4: cached isochrone polygon for radius trips
+    radius_isochrone_geojson: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -74,6 +76,9 @@ class Trip(Base):
 
     waypoints: Mapped[list["Waypoint"]] = relationship(
         "Waypoint", back_populates="trip", cascade="all, delete-orphan", order_by="Waypoint.position"
+    )
+    radius_suggestions: Mapped[list["RadiusSuggestion"]] = relationship(
+        "RadiusSuggestion", back_populates="trip", cascade="all, delete-orphan"
     )
 
 
@@ -108,3 +113,32 @@ class Waypoint(Base):
     )
 
     trip: Mapped["Trip"] = relationship("Trip", back_populates="waypoints")
+
+
+class RadiusSuggestion(Base):
+    __tablename__ = "radius_suggestions"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    trip_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("trips.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    place_id: Mapped[str] = mapped_column(String(300), nullable=False)
+    name: Mapped[str] = mapped_column(String(300), nullable=False)
+    address: Mapped[str] = mapped_column(Text, nullable=False)
+    lat: Mapped[float] = mapped_column(Numeric(10, 7), nullable=False)
+    lng: Mapped[float] = mapped_column(Numeric(10, 7), nullable=False)
+    category: Mapped[str] = mapped_column(String(100), nullable=False)
+    drive_seconds_from_start: Mapped[int] = mapped_column(Integer, nullable=False)
+    distance_meters_from_start: Mapped[int] = mapped_column(Integer, nullable=False)
+    rating: Mapped[float | None] = mapped_column(Numeric(3, 1), nullable=True)
+    selected: Mapped[bool] = mapped_column(nullable=False, server_default="false")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    trip: Mapped["Trip"] = relationship("Trip", back_populates="radius_suggestions")

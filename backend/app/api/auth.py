@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.core.deps import CurrentUser
 from app.core.security import (
     create_access_token,
@@ -25,14 +26,15 @@ REFRESH_COOKIE = "refresh_token"
 
 
 def _set_refresh_cookie(response: Response, token: str) -> None:
+    is_prod = settings.environment == "production"
     response.set_cookie(
         key=REFRESH_COOKIE,
         value=token,
         httponly=True,
-        samesite="strict",
-        secure=False,  # set True behind HTTPS in production
+        samesite="none" if is_prod else "lax",
+        secure=is_prod,
         max_age=30 * 24 * 60 * 60,
-        path="/auth/refresh",
+        path="/",
     )
 
 

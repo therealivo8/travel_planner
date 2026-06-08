@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Plus, MapPin, Circle, ArrowRight } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { api } from "@/lib/api";
@@ -56,18 +57,24 @@ function TripRow({ trip }: { trip: TripListItem }) {
 }
 
 export default function TripsPage() {
-  const { user } = useAuth();
+  const { user, isLoading: authLoading } = useAuth();
+  const router = useRouter();
   const [trips, setTrips] = useState<TripListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (authLoading) return;
+    if (!user) {
+      router.replace("/login?next=/trips");
+      return;
+    }
     api
       .get<PaginatedTrips>("/trips")
       .then((data) => setTrips(data.items))
       .catch((err) => setError(err instanceof Error ? err.message : "Failed to load trips"))
       .finally(() => setLoading(false));
-  }, []);
+  }, [authLoading, user, router]);
 
   return (
     <div className="min-h-screen bg-neutral-50">

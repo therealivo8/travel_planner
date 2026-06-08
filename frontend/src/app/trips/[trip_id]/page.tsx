@@ -5,6 +5,7 @@ import { use } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, RefreshCw, Trash2, PencilLine, Check, X } from "lucide-react";
+import { useAuth } from "@/context/AuthContext";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,15 +26,6 @@ const STATUS_VARIANTS: Record<string, "default" | "outline" | "draft" | "success
   completed: "success",
 };
 
-function useDebounce<T>(value: T, delay: number): T {
-  const [debounced, setDebounced] = useState(value);
-  useEffect(() => {
-    const t = setTimeout(() => setDebounced(value), delay);
-    return () => clearTimeout(t);
-  }, [value, delay]);
-  return debounced;
-}
-
 export default function TripDetailPage({
   params,
 }: {
@@ -41,6 +33,7 @@ export default function TripDetailPage({
 }) {
   const { trip_id } = use(params);
   const router = useRouter();
+  const { user, isLoading: authLoading } = useAuth();
 
   const [trip, setTrip] = useState<Trip | null>(null);
   const [loading, setLoading] = useState(true);
@@ -52,8 +45,6 @@ export default function TripDetailPage({
   const [editingTitle, setEditingTitle] = useState(false);
   const [draftTitle, setDraftTitle] = useState("");
 
-  // Debounce waypoint mutations before recalculating route
-  const pendingRecalc = useRef(false);
   const recalcTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const scheduleRecalc = useCallback(
@@ -76,8 +67,13 @@ export default function TripDetailPage({
     [trip_id]
   );
 
-  // Initial load
+  // Auth guard + initial load
   useEffect(() => {
+    if (authLoading) return;
+    if (!user) {
+      router.replace(`/login?next=/trips/${trip_id}`);
+      return;
+    }
     api
       .get<Trip>(`/trips/${trip_id}`)
       .then((data) => {
@@ -86,7 +82,7 @@ export default function TripDetailPage({
       })
       .catch((err) => setError(err instanceof Error ? err.message : "Failed to load trip"))
       .finally(() => setLoading(false));
-  }, [trip_id]);
+  }, [authLoading, user, trip_id, router]);
 
   async function handleRecalculate() {
     if (!trip) return;
@@ -228,6 +224,7 @@ export default function TripDetailPage({
 
   const sortedWaypoints = [...trip.waypoints].sort((a, b) => a.position - b.position);
   const isPointToPoint = trip.mode === "point_to_point";
+  const isRadius = trip.mode === "radius";
   const hasRoute = !!trip.route_polyline;
 
   return (
@@ -317,7 +314,7 @@ export default function TripDetailPage({
 
           {/* Sidebar */}
           <div className="flex flex-col gap-4">
-            {/* Route stats */}
+            {/* Point-to-point route stats */}
             {isPointToPoint && (
               <div className="bg-white rounded-xl border border-neutral-200 p-4 flex flex-col gap-3">
                 <div className="flex items-center justify-between">
@@ -351,6 +348,32 @@ export default function TripDetailPage({
               </div>
             )}
 
+            {/* Radius mode summary */}
+            {isRadius && (
+              <div className="bg-white rounded-xl border border-neutral-200 p-4 flex flex-col gap-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-medium text-neutral-700">Radius trip</p>
+                  <Button variant="outline" size="sm" className="text-xs" asChild>
+                    <Link href={`/trips/${trip_id}/discover`}>Explore more</Link>
+                  </Button>
+                </div>
+                <p className="text-xs text-neutral-500">
+                  Within {trip.max_drive_minutes} min drive
+                </p>
+                {hasRoute && (
+                  <RouteStats
+                    totalDistanceMeters={trip.total_distance_meters}
+                    totalDriveSeconds={trip.total_drive_seconds}
+                  />
+                )}
+                {!hasRoute && sortedWaypoints.length === 0 && (
+                  <p className="text-xs text-neutral-400">
+                    Select stops on the discover page to build a route.
+                  </p>
+                )}
+              </div>
+            )}
+
             {/* Route addresses */}
             <div className="bg-white rounded-xl border border-neutral-200 p-4 flex flex-col gap-2">
               <div className="flex items-start gap-2">
@@ -380,7 +403,7 @@ export default function TripDetailPage({
               )}
             </div>
 
-            {/* Waypoints */}
+            {/* Waypoints — point-to-point (editable) or radius (read-only selected stops) */}
             {isPointToPoint && (
               <div className="bg-white rounded-xl border border-neutral-200 p-4 flex flex-col gap-3">
                 <p className="text-sm font-medium text-neutral-700">Stops</p>
@@ -393,6 +416,26 @@ export default function TripDetailPage({
                   onUpdateStopDuration={handleUpdateStopDuration}
                   loading={calculating}
                 />
+              </div>
+            )}
+            {isRadius && sortedWaypoints.length > 0 && (
+              <div className="bg-white rounded-xl border border-neutral-200 p-4 flex flex-col gap-2">
+                <p className="text-sm font-medium text-neutral-700">Selected stops</p>
+                {sortedWaypoints.map((wp, i) => (
+                  <div key={wp.id} className="flex items-start gap-2">
+                    <div className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary-500 text-[10px] font-bold text-white">
+                      {i + 1}
+                    </div>
+                    <div>
+                      <p className="text-sm text-neutral-700">{wp.label ?? wp.address}</p>
+                      {wp.drive_seconds_from_prev != null && (
+                        <p className="text-xs text-neutral-400">
+                          +{Math.round(wp.drive_seconds_from_prev / 60)} min
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
           </div>

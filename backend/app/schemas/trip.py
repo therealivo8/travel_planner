@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from typing import Any, Literal
+from typing import Any, Literal  # noqa: F401
 
 from pydantic import BaseModel, field_validator, model_validator
 
@@ -141,6 +141,34 @@ class PaginatedTrips(BaseModel):
     total: int
     page: int
     page_size: int
+
+
+class RadiusSuggestionOut(BaseModel):
+    id: uuid.UUID
+    trip_id: uuid.UUID
+    place_id: str
+    name: str
+    address: str
+    lat: float
+    lng: float
+    category: str
+    drive_seconds_from_start: int
+    distance_meters_from_start: int
+    rating: float | None
+    selected: bool
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class RadiusDiscoverResponse(BaseModel):
+    isochrone_geojson: dict[str, Any]
+    suggestions: list[RadiusSuggestionOut]
+
+
+class RadiusSelectRequest(BaseModel):
+    suggestion_ids: list[uuid.UUID]
+    generate_route: bool = False
 
 
 class ReorderWaypointsRequest(BaseModel):

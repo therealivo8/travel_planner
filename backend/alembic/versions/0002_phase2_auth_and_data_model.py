@@ -20,10 +20,8 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     # --- Enums ---
-    trip_mode = postgresql.ENUM("point_to_point", "radius", name="trip_mode", create_type=False)
-    trip_status = postgresql.ENUM("draft", "planned", "completed", name="trip_status", create_type=False)
-    trip_mode.create(op.get_bind(), checkfirst=True)
-    trip_status.create(op.get_bind(), checkfirst=True)
+    op.execute("DO $$ BEGIN CREATE TYPE trip_mode AS ENUM ('point_to_point', 'radius'); EXCEPTION WHEN duplicate_object THEN NULL; END $$")
+    op.execute("DO $$ BEGIN CREATE TYPE trip_status AS ENUM ('draft', 'planned', 'completed'); EXCEPTION WHEN duplicate_object THEN NULL; END $$")
 
     # --- users ---
     op.create_table(
@@ -58,8 +56,8 @@ def upgrade() -> None:
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True, server_default=sa.text("gen_random_uuid()")),
         sa.Column("user_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("users.id", ondelete="CASCADE"), nullable=False),
         sa.Column("title", sa.String(200), nullable=False),
-        sa.Column("mode", sa.Enum("point_to_point", "radius", name="trip_mode"), nullable=False),
-        sa.Column("status", sa.Enum("draft", "planned", "completed", name="trip_status"), nullable=False, server_default="draft"),
+        sa.Column("mode", postgresql.ENUM("point_to_point", "radius", name="trip_mode", create_type=False), nullable=False),
+        sa.Column("status", postgresql.ENUM("draft", "planned", "completed", name="trip_status", create_type=False), nullable=False, server_default="draft"),
         sa.Column("start_address", sa.Text, nullable=False),
         sa.Column("start_lat", sa.Numeric(10, 7), nullable=False),
         sa.Column("start_lng", sa.Numeric(10, 7), nullable=False),

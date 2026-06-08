@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Circle, ArrowRight } from "lucide-react";
 import { z } from "zod";
+import { useAuth } from "@/context/AuthContext";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -40,7 +41,15 @@ const radiusSchema = baseSchema.extend({
 type FieldErrors = Partial<Record<string, string>>;
 
 export default function NewTripPage() {
+  const { user, isLoading: authLoading } = useAuth();
   const router = useRouter();
+
+  useEffect(() => {
+    if (!authLoading && !user) {
+      router.replace("/login?next=/trips/new");
+    }
+  }, [authLoading, user, router]);
+
   const [mode, setMode] = useState<Mode>("point_to_point");
   const [title, setTitle] = useState("");
   const [notes, setNotes] = useState("");
@@ -81,15 +90,17 @@ export default function NewTripPage() {
     setPending(true);
     try {
       const trip = await api.post<Trip>("/trips", { ...result.data, mode });
-      // Auto-calculate route on creation for point_to_point
       if (mode === "point_to_point") {
         try {
           await api.post(`/trips/${trip.id}/calculate-route`);
         } catch {
           // Route calculation failure is non-fatal — user can retry on the detail page
         }
+        router.push(`/trips/${trip.id}`);
+      } else {
+        // Radius trips go to the discover page to run POI discovery
+        router.push(`/trips/${trip.id}/discover`);
       }
-      router.push(`/trips/${trip.id}`);
     } catch (err) {
       setServerError(err instanceof Error ? err.message : "Failed to create trip");
     } finally {

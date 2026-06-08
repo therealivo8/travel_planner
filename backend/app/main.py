@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.auth import router as auth_router
 from app.api.health import router as health_router
+from app.api.radius import router as radius_router
 from app.api.routing import router as routing_router
 from app.api.trips import router as trips_router
 from app.api.waypoints import router as waypoints_router
@@ -27,3 +28,4 @@ app.include_router(auth_router)
 app.include_router(trips_router)
 app.include_router(waypoints_router)
 app.include_router(routing_router)
+app.include_router(radius_router)

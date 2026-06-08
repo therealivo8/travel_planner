@@ -8,7 +8,7 @@ export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const hasRefreshCookie = request.cookies.has(REFRESH_COOKIE);
 
-  const isProtected = PROTECTED_PREFIXES.some((p) => pathname.startsWith(p));
+const isProtected = PROTECTED_PREFIXES.some((p) => pathname.startsWith(p));
   const isAuthRoute = AUTH_ROUTES.some((p) => pathname.startsWith(p));
 
   if (isProtected && !hasRefreshCookie) {
