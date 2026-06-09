@@ -33,6 +33,15 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
     ...rest,
   });
 
+  if (res.status === 429) {
+    const retryAfter = res.headers.get("Retry-After");
+    const seconds = retryAfter ? parseInt(retryAfter, 10) : null;
+    const message = seconds
+      ? `Too many requests. Please wait ${seconds} second${seconds !== 1 ? "s" : ""} before trying again.`
+      : "Too many requests. Please wait a moment before trying again.";
+    throw new Error(message);
+  }
+
   if (!res.ok) {
     const text = await res.text().catch(() => res.statusText);
     throw new Error(`API ${res.status}: ${text}`);

@@ -1,7 +1,9 @@
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -19,6 +21,7 @@ from app.services import radius as radius_svc
 from app.services import routes as route_svc
 
 router = APIRouter(tags=["radius"])
+limiter = Limiter(key_func=get_remote_address)
 
 DB = Annotated[AsyncSession, Depends(get_db)]
 
@@ -41,7 +44,9 @@ async def _get_radius_trip(trip_id: uuid.UUID, user_id: uuid.UUID, db: AsyncSess
 
 
 @router.post("/trips/{trip_id}/radius/discover", response_model=RadiusDiscoverResponse)
+@limiter.limit("3/hour")
 async def discover(
+    request: Request,
     trip_id: uuid.UUID,
     current_user: CurrentUser,
     db: DB,
@@ -128,7 +133,9 @@ async def get_suggestions(
 
 
 @router.post("/trips/{trip_id}/radius/select", response_model=TripOut)
+@limiter.limit("20/hour")
 async def select_suggestions(
+    request: Request,
     trip_id: uuid.UUID,
     body: RadiusSelectRequest,
     current_user: CurrentUser,

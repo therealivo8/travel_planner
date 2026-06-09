@@ -1,7 +1,9 @@
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -13,6 +15,7 @@ from app.schemas.trip import GeocodeResult, RouteOut, TripOut
 from app.services import routes as route_svc
 
 router = APIRouter(tags=["routing"])
+limiter = Limiter(key_func=get_remote_address)
 
 DB = Annotated[AsyncSession, Depends(get_db)]
 
@@ -30,7 +33,9 @@ async def _get_owned_trip(trip_id: uuid.UUID, user_id: uuid.UUID, db: AsyncSessi
 
 
 @router.post("/trips/{trip_id}/calculate-route", response_model=TripOut)
+@limiter.limit("10/hour")
 async def calculate_route(
+    request: Request,
     trip_id: uuid.UUID,
     current_user: CurrentUser,
     db: DB,
@@ -118,7 +123,9 @@ async def get_route(
 
 
 @router.get("/geocode", response_model=GeocodeResult | None)
+@limiter.limit("30/hour")
 async def geocode(
+    request: Request,
     q: str = Query(..., description="Address to geocode"),
 ) -> GeocodeResult | None:
     """Proxy to Google Geocoding API — keeps the API key server-side."""
