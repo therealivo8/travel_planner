@@ -1,9 +1,11 @@
 import uuid
-from datetime import datetime
+from datetime import date, datetime, time
 from typing import Any
 
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
+    Date,
     DateTime,
     Enum,
     ForeignKey,
@@ -12,6 +14,7 @@ from sqlalchemy import (
     SmallInteger,
     String,
     Text,
+    Time,
     UniqueConstraint,
     func,
 )
@@ -64,6 +67,11 @@ class Trip(Base):
     route_raw_response: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     # Phase 4: cached isochrone polygon for radius trips
     radius_isochrone_geojson: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    # Phase 5: sharing and scheduling
+    share_token: Mapped[str | None] = mapped_column(String(64), unique=True, nullable=True)
+    is_public: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    start_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    cover_image_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -79,6 +87,9 @@ class Trip(Base):
     )
     radius_suggestions: Mapped[list["RadiusSuggestion"]] = relationship(
         "RadiusSuggestion", back_populates="trip", cascade="all, delete-orphan"
+    )
+    itinerary_days: Mapped[list["ItineraryDay"]] = relationship(
+        "ItineraryDay", back_populates="trip", cascade="all, delete-orphan", order_by="ItineraryDay.day_number"
     )
 
 
@@ -108,11 +119,44 @@ class Waypoint(Base):
     drive_seconds_from_prev: Mapped[int | None] = mapped_column(Integer, nullable=True)
     distance_meters_from_prev: Mapped[int | None] = mapped_column(Integer, nullable=True)
     place_id: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    # Phase 5: itinerary scheduling
+    itinerary_day_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("itinerary_days.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    scheduled_arrival_time: Mapped[time | None] = mapped_column(Time, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
     trip: Mapped["Trip"] = relationship("Trip", back_populates="waypoints")
+    itinerary_day: Mapped["ItineraryDay | None"] = relationship("ItineraryDay", back_populates="waypoints")
+
+
+class ItineraryDay(Base):
+    __tablename__ = "itinerary_days"
+    __table_args__ = (
+        UniqueConstraint("trip_id", "day_number", name="uq_itinerary_days_trip_day"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    trip_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("trips.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    day_number: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    title: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    trip: Mapped["Trip"] = relationship("Trip", back_populates="itinerary_days")
+    waypoints: Mapped[list["Waypoint"]] = relationship("Waypoint", back_populates="itinerary_day")
 
 
 class RadiusSuggestion(Base):

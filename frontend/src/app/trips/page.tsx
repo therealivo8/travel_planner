@@ -1,59 +1,38 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Plus, MapPin, Circle, ArrowRight } from "lucide-react";
+import { Plus, MapPin } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import type { PaginatedTrips, TripListItem } from "@/types";
+import { TripCard } from "@/components/trips";
+import { TripActionsMenu } from "@/components/trips/TripActionsMenu";
+import type { PaginatedTrips, TripListItem, TripStatus } from "@/types";
 
-const MODE_LABELS: Record<string, string> = {
-  point_to_point: "Point-to-Point",
-  radius: "Radius",
-};
+type SortKey = "created_at" | "updated_at" | "start_date";
 
-const STATUS_VARIANTS: Record<string, "default" | "outline" | "draft" | "success"> = {
-  draft: "draft",
-  planned: "default",
-  completed: "success",
-};
+const STATUS_TABS: { label: string; value: TripStatus | "all" }[] = [
+  { label: "All", value: "all" },
+  { label: "Draft", value: "draft" },
+  { label: "Planned", value: "planned" },
+  { label: "Completed", value: "completed" },
+];
 
-function TripRow({ trip }: { trip: TripListItem }) {
-  const isRadius = trip.mode === "radius";
-  return (
-    <Link
-      href={`/trips/${trip.id}`}
-      className="flex items-center justify-between px-4 py-4 hover:bg-neutral-50 transition-colors border-b border-neutral-100 last:border-0"
-    >
-      <div className="flex items-center gap-3">
-        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-neutral-100 shrink-0">
-          {isRadius ? (
-            <Circle className="h-4 w-4 text-accent-500" />
-          ) : (
-            <ArrowRight className="h-4 w-4 text-primary-500" />
-          )}
-        </div>
-        <div>
-          <p className="text-sm font-medium text-neutral-900">{trip.title}</p>
-          <p className="text-xs text-neutral-400 mt-0.5">
-            {new Date(trip.created_at).toLocaleDateString()}
-          </p>
-        </div>
-      </div>
-      <div className="flex items-center gap-2">
-        <Badge variant="outline" className="text-xs hidden sm:inline-flex">
-          {MODE_LABELS[trip.mode] ?? trip.mode}
-        </Badge>
-        <Badge variant={STATUS_VARIANTS[trip.status] ?? "outline"} className="text-xs capitalize">
-          {trip.status}
-        </Badge>
-      </div>
-    </Link>
-  );
+const SORT_OPTIONS: { label: string; value: SortKey }[] = [
+  { label: "Newest", value: "created_at" },
+  { label: "Recently Updated", value: "updated_at" },
+  { label: "Upcoming", value: "start_date" },
+];
+
+function distanceMi(meters: number | null): number | undefined {
+  return meters != null ? Math.round((meters / 1609.34) * 10) / 10 : undefined;
+}
+
+function driveMin(seconds: number | null): number | undefined {
+  return seconds != null ? Math.round(seconds / 60) : undefined;
 }
 
 export default function TripsPage() {
@@ -62,6 +41,23 @@ export default function TripsPage() {
   const [trips, setTrips] = useState<TripListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState<TripStatus | "all">("all");
+  const [sort, setSort] = useState<SortKey>("created_at");
+
+  const fetchTrips = useCallback(async (status: TripStatus | "all", sortKey: SortKey) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const params = new URLSearchParams({ sort: sortKey });
+      if (status !== "all") params.set("status", status);
+      const data = await api.get<PaginatedTrips>(`/trips?${params.toString()}`);
+      setTrips(data.items);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load trips");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     if (authLoading) return;
@@ -69,18 +65,42 @@ export default function TripsPage() {
       router.replace("/login?next=/trips");
       return;
     }
-    api
-      .get<PaginatedTrips>("/trips")
-      .then((data) => setTrips(data.items))
-      .catch((err) => setError(err instanceof Error ? err.message : "Failed to load trips"))
-      .finally(() => setLoading(false));
-  }, [authLoading, user, router]);
+    fetchTrips(statusFilter, sort);
+  }, [authLoading, user, router, statusFilter, sort, fetchTrips]);
+
+  async function handleDuplicate(tripId: string) {
+    try {
+      await api.post(`/trips/${tripId}/duplicate`);
+      fetchTrips(statusFilter, sort);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to duplicate trip");
+    }
+  }
+
+  async function handleDelete(tripId: string) {
+    if (!confirm("Delete this trip? This cannot be undone.")) return;
+    try {
+      await api.delete(`/trips/${tripId}`);
+      setTrips((prev) => prev.filter((t) => t.id !== tripId));
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to delete trip");
+    }
+  }
+
+  async function handleArchive(tripId: string) {
+    try {
+      await api.patch(`/trips/${tripId}`, { status: "completed" });
+      fetchTrips(statusFilter, sort);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to archive trip");
+    }
+  }
 
   return (
     <div className="min-h-screen bg-neutral-50">
       {/* Header */}
       <div className="bg-white border-b border-neutral-200">
-        <div className="max-w-3xl mx-auto px-4 sm:px-6 py-6 flex items-center justify-between">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6 flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-neutral-900">My Trips</h1>
             {user && (
@@ -96,17 +116,48 @@ export default function TripsPage() {
             </Link>
           </Button>
         </div>
+
+        {/* Filter + sort bar */}
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 pb-0 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-1">
+            {STATUS_TABS.map((tab) => (
+              <button
+                key={tab.value}
+                onClick={() => setStatusFilter(tab.value)}
+                className={`px-3 py-2 text-sm font-medium border-b-2 transition-colors ${
+                  statusFilter === tab.value
+                    ? "border-primary-600 text-primary-700"
+                    : "border-transparent text-neutral-500 hover:text-neutral-700"
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+
+          <select
+            value={sort}
+            onChange={(e) => setSort(e.target.value as SortKey)}
+            className="text-xs text-neutral-600 border border-neutral-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-primary-500"
+          >
+            {SORT_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
 
-      <div className="max-w-3xl mx-auto px-4 sm:px-6 py-6">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6">
         {loading && (
-          <div className="bg-white rounded-xl border border-neutral-200 overflow-hidden divide-y divide-neutral-100">
-            {Array.from({ length: 4 }).map((_, i) => (
-              <div key={i} className="flex items-center gap-3 px-4 py-4">
-                <Skeleton className="h-9 w-9 rounded-lg" />
-                <div className="flex-1 space-y-2">
-                  <Skeleton className="h-4 w-40" />
-                  <Skeleton className="h-3 w-24" />
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="rounded-xl border border-neutral-200 overflow-hidden bg-white">
+                <Skeleton className="h-36 w-full" />
+                <div className="p-4 space-y-2">
+                  <Skeleton className="h-4 w-3/4" />
+                  <Skeleton className="h-3 w-1/2" />
                 </div>
               </div>
             ))}
@@ -126,9 +177,13 @@ export default function TripsPage() {
                 <MapPin className="h-6 w-6 text-neutral-400" />
               </div>
             </div>
-            <h2 className="text-lg font-semibold text-neutral-900 mb-2">No trips yet</h2>
+            <h2 className="text-lg font-semibold text-neutral-900 mb-2">
+              {statusFilter === "all" ? "No trips yet" : `No ${statusFilter} trips`}
+            </h2>
             <p className="text-sm text-neutral-500 mb-6">
-              Plan your first road trip to get started.
+              {statusFilter === "all"
+                ? "Plan your first road trip to get started."
+                : "Try a different filter or create a new trip."}
             </p>
             <Button asChild>
               <Link href="/trips/new">
@@ -140,9 +195,27 @@ export default function TripsPage() {
         )}
 
         {!loading && !error && trips.length > 0 && (
-          <div className="bg-white rounded-xl border border-neutral-200 overflow-hidden">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {trips.map((trip) => (
-              <TripRow key={trip.id} trip={trip} />
+              <div key={trip.id} className="relative">
+                <Link href={`/trips/${trip.id}`} className="block">
+                  <TripCard
+                    title={trip.title}
+                    mode={trip.mode}
+                    status={trip.status}
+                    coverImage={trip.cover_image_url ?? undefined}
+                    distanceMi={distanceMi(trip.total_distance_meters)}
+                    driveTimeMin={driveMin(trip.total_drive_seconds)}
+                    updatedAt={new Date(trip.updated_at)}
+                  />
+                </Link>
+                <TripActionsMenu
+                  tripId={trip.id}
+                  onDuplicate={() => handleDuplicate(trip.id)}
+                  onDelete={() => handleDelete(trip.id)}
+                  onArchive={() => handleArchive(trip.id)}
+                />
+              </div>
             ))}
           </div>
         )}

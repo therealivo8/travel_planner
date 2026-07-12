@@ -4,13 +4,14 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { use } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, RefreshCw, Trash2, PencilLine, Check, X } from "lucide-react";
+import { ArrowLeft, RefreshCw, Trash2, PencilLine, Check, X, Share2, FileDown, CalendarDays } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
+import { ShareModal } from "@/components/trips/ShareModal";
 import {
   GoogleMapsProvider,
   TripMap,
@@ -40,6 +41,8 @@ export default function TripDetailPage({
   const [error, setError] = useState<string | null>(null);
   const [calculating, setCalculating] = useState(false);
   const [routeError, setRouteError] = useState<string | null>(null);
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [exportingPdf, setExportingPdf] = useState(false);
 
   // Inline title editing
   const [editingTitle, setEditingTitle] = useState(false);
@@ -113,6 +116,27 @@ export default function TripDetailPage({
     if (!confirm("Delete this trip? This cannot be undone.")) return;
     await api.delete(`/trips/${trip_id}`);
     router.push("/trips");
+  }
+
+  async function handleExportPdf() {
+    setExportingPdf(true);
+    try {
+      const res = await fetch(`/api/trips/${trip_id}/export/pdf`, {
+        headers: { Authorization: `Bearer ${(await import("@/lib/api")).getApiToken() ?? ""}` },
+      });
+      if (!res.ok) throw new Error("Export failed");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${trip?.title ?? "trip"}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "PDF export failed");
+    } finally {
+      setExportingPdf(false);
+    }
   }
 
   // Waypoint handlers
@@ -285,17 +309,53 @@ export default function TripDetailPage({
               </Badge>
             </div>
 
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={handleDeleteTrip}
-              className="text-neutral-400 hover:text-error-500 shrink-0"
-              aria-label="Delete trip"
-            >
-              <Trash2 className="h-4 w-4" />
-            </Button>
+            <div className="flex items-center gap-1 shrink-0">
+              <Button variant="ghost" size="sm" className="gap-1.5 text-xs" asChild>
+                <Link href={`/trips/${trip_id}/itinerary`}>
+                  <CalendarDays className="h-3.5 w-3.5" />
+                  Itinerary
+                </Link>
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="gap-1.5 text-xs"
+                onClick={() => setShowShareModal(true)}
+              >
+                <Share2 className="h-3.5 w-3.5" />
+                Share
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="gap-1.5 text-xs"
+                onClick={handleExportPdf}
+                disabled={exportingPdf}
+              >
+                <FileDown className={`h-3.5 w-3.5 ${exportingPdf ? "animate-bounce" : ""}`} />
+                {exportingPdf ? "Exporting…" : "Export PDF"}
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={handleDeleteTrip}
+                className="text-neutral-400 hover:text-error-500"
+                aria-label="Delete trip"
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
         </div>
+
+        {showShareModal && trip && (
+          <ShareModal
+            tripId={trip_id}
+            initialIsPublic={trip.is_public}
+            initialShareToken={trip.share_token}
+            onClose={() => setShowShareModal(false)}
+          />
+        )}
 
         <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Map */}

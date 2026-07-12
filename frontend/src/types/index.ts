@@ -20,6 +20,10 @@ export interface Trip {
   total_distance_meters: number | null;
   total_drive_seconds: number | null;
   route_polyline: string | null;
+  share_token: string | null;
+  is_public: boolean;
+  start_date: string | null;
+  cover_image_url: string | null;
   created_at: string;
   updated_at: string;
   waypoints: Waypoint[];
@@ -28,6 +32,11 @@ export interface Trip {
 export interface TripListItem {
   id: string;
   title: string;
+  total_distance_meters: number | null;
+  total_drive_seconds: number | null;
+  cover_image_url: string | null;
+  start_date: string | null;
+  is_public: boolean;
   mode: TripMode;
   status: TripStatus;
   created_at: string;
@@ -47,7 +56,60 @@ export interface Waypoint {
   drive_seconds_from_prev: number | null;
   distance_meters_from_prev: number | null;
   place_id: string | null;
+  itinerary_day_id: string | null;
+  scheduled_arrival_time: string | null;
   created_at: string;
+}
+
+// Phase 5: Itinerary types
+export interface ItineraryWaypoint {
+  id: string;
+  label: string | null;
+  address: string;
+  position: number;
+  scheduled_arrival_time: string | null;
+  drive_seconds_from_prev: number | null;
+}
+
+export interface ItineraryDay {
+  id: string;
+  trip_id: string;
+  day_number: number;
+  date: string | null;
+  title: string | null;
+  notes: string | null;
+  waypoints: ItineraryWaypoint[];
+}
+
+export interface Itinerary {
+  trip_id: string;
+  days: ItineraryDay[];
+  unscheduled_waypoints: ItineraryWaypoint[];
+}
+
+export interface ShareInfo {
+  share_token: string;
+  share_url: string;
+  is_public: boolean;
+}
+
+export interface PublicTrip {
+  id: string;
+  title: string;
+  mode: TripMode;
+  start_address: string;
+  start_lat: number;
+  start_lng: number;
+  end_address: string | null;
+  end_lat: number | null;
+  end_lng: number | null;
+  total_distance_meters: number | null;
+  total_drive_seconds: number | null;
+  route_polyline: string | null;
+  start_date: string | null;
+  cover_image_url: string | null;
+  waypoints: Waypoint[];
+  days: ItineraryDay[];
 }
 
 export interface RouteLeg {
