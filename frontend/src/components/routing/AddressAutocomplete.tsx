@@ -31,7 +31,7 @@ export function AddressAutocomplete({
 }: Props) {
   const placesLib = useMapsLibrary("places");
   const containerRef = useRef<HTMLDivElement>(null);
-  const elementRef = useRef<google.maps.places.PlaceAutocompleteElement | null>(null);
+  const elementRef = useRef<HTMLElement | null>(null);
   const [inputValue, setInputValue] = useState(value);
   const [committedValue, setCommittedValue] = useState(value);
 
@@ -56,10 +56,10 @@ export function AddressAutocomplete({
     containerRef.current.appendChild(el);
     elementRef.current = el;
 
-    const handlePlaceSelect = async (
-      event: google.maps.places.PlaceAutocompletePlaceSelectEvent
-    ) => {
-      const place = event.place;
+    const handlePlaceSelect = async (event: Event) => {
+      const prediction = (event as unknown as { placePrediction: { toPlace: () => { fetchFields: (o: { fields: string[] }) => Promise<void>; location: { lat: () => number; lng: () => number } | null; formattedAddress?: string; id?: string } } }).placePrediction;
+      if (!prediction) return;
+      const place = prediction.toPlace();
       await place.fetchFields({ fields: ["formattedAddress", "location", "id"] });
 
       if (!place.location) return;
@@ -80,11 +80,11 @@ export function AddressAutocomplete({
       onChange?.(target.value);
     };
 
-    el.addEventListener("gmp-placeselect", handlePlaceSelect as EventListener);
+    el.addEventListener("gmp-select", handlePlaceSelect);
     el.addEventListener("input", handleInput);
 
     return () => {
-      el.removeEventListener("gmp-placeselect", handlePlaceSelect as EventListener);
+      el.removeEventListener("gmp-select", handlePlaceSelect);
       el.removeEventListener("input", handleInput);
       el.remove();
       elementRef.current = null;
@@ -100,7 +100,7 @@ export function AddressAutocomplete({
         ref={containerRef}
         aria-invalid={ariaInvalid}
         className={cn(
-          "flex h-10 w-full rounded-lg border border-neutral-200 bg-white pl-9 pr-3 text-sm overflow-hidden",
+          "flex h-10 w-full rounded-lg border border-neutral-200 bg-white pl-9 pr-3 text-sm",
           "focus-within:ring-2 focus-within:ring-primary-500 focus-within:outline-none",
           "has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-50",
           ariaInvalid && "border-error-500 focus-within:ring-error-500",
