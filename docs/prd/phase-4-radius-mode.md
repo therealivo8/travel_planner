@@ -157,3 +157,7 @@ Shows:
 - The `selected → waypoint` conversion should reuse the waypoint creation logic from Phase 2, ordering stops by ascending `drive_seconds_from_start`.
 - For the round-trip, append the trip's start location as the final waypoint before calling the route calculation.
 - Cache the isochrone GeoJSON in a `radius_isochrone_geojson` JSONB column on the `trips` table to avoid re-fetching.
+
+---
+
+See also: [phase-7-corridor-and-itinerary-optimization.md](./phase-7-corridor-and-itinerary-optimization.md) — adds a time-budgeted itinerary optimizer on top of selected suggestions, instead of a naive unordered round trip.

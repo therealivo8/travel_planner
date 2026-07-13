@@ -250,6 +250,53 @@ class ShareOut(BaseModel):
     is_public: bool
 
 
+# ── Phase 7: Corridor stops + radius itinerary builder ─────────────────────
+
+class CorridorSuggestionOut(BaseModel):
+    id: uuid.UUID
+    trip_id: uuid.UUID
+    place_id: str
+    name: str
+    address: str
+    lat: float
+    lng: float
+    category: str
+    rating: float | None
+    detour_seconds: int
+    route_fraction: float
+    selected: bool
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class CorridorDiscoverResponse(BaseModel):
+    suggestions: list[CorridorSuggestionOut]
+    max_detour_seconds: int
+
+
+class CorridorSelectRequest(BaseModel):
+    suggestion_ids: list[uuid.UUID]
+    insert_as_waypoints: bool = False
+
+
+class ItineraryBuildRequest(BaseModel):
+    suggestion_ids: list[uuid.UUID]
+    stop_duration_minutes: int = 30
+
+
+class ItineraryBuildOut(BaseModel):
+    trip_id: uuid.UUID
+    waypoints: list[WaypointOut]
+    total_drive_seconds: int
+    total_stop_minutes: int
+    total_trip_minutes: int
+    budget_minutes: int
+    within_budget: bool
+    over_under_minutes: int
+    dropped_suggestion_ids: list[uuid.UUID]
+
+
 class PublicTripOut(BaseModel):
     id: uuid.UUID
     title: str

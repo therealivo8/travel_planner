@@ -7,53 +7,13 @@ Pipeline:
 4. Return structured suggestions + raw isochrone GeoJSON.
 """
 
+import math
 from typing import Any
 
-import googlemaps
 import httpx
 
 from app.config import settings
-
-# Google place types → our human-readable category labels
-_TYPE_MAP: dict[str, str] = {
-    "park": "park",
-    "natural_feature": "park",
-    "campground": "park",
-    "national_park": "park",
-    "restaurant": "restaurant",
-    "food": "restaurant",
-    "cafe": "restaurant",
-    "bar": "restaurant",
-    "tourist_attraction": "landmark",
-    "museum": "landmark",
-    "art_gallery": "landmark",
-    "amusement_park": "landmark",
-    "stadium": "landmark",
-    "church": "landmark",
-    "place_of_worship": "landmark",
-    "locality": "town",
-    "sublocality": "town",
-    "political": "town",
-}
-
-_SEARCH_TYPES = [
-    "tourist_attraction",
-    "park",
-    "campground",
-    "museum",
-    "restaurant",
-    "art_gallery",
-    "amusement_park",
-]
-
-# Distance Matrix: max 25 destinations per request
-_MATRIX_BATCH = 25
-
-
-def _gmaps() -> googlemaps.Client:
-    if not settings.maps_api_key:
-        raise ValueError("MAPS_API_KEY is not configured")
-    return googlemaps.Client(key=settings.maps_api_key)
+from app.services import places
 
 
 def fetch_isochrone(
@@ -63,7 +23,7 @@ def fetch_isochrone(
     if not settings.ors_api_key:
         raise ValueError("ORS_API_KEY is not configured")
 
-    max_seconds = max_drive_minutes * 60
+    max_seconds = min(max_drive_minutes * 60, 3600)  # ORS free tier caps at 3600s
     url = "https://api.openrouteservice.org/v2/isochrones/driving-car"
     headers = {
         "Authorization": settings.ors_api_key,
@@ -74,7 +34,9 @@ def fetch_isochrone(
         "range": [max_seconds],
         "range_type": "time",
     }
-    resp = httpx.post(url, json=body, headers=headers, timeout=15)
+    resp = httpx.post(url, json=body, headers=headers, timeout=30)
+    if not resp.is_success:
+        raise ValueError(f"ORS error {resp.status_code}: {resp.text}")
     resp.raise_for_status()
     data = resp.json()
 
@@ -96,99 +58,6 @@ def _bbox_from_polygon(geometry: dict[str, Any]) -> tuple[float, float, float, f
     return min(lats), min(lngs), max(lats), max(lngs)
 
 
-def _classify(place: dict[str, Any]) -> str:
-    types: list[str] = place.get("types", [])
-    for t in types:
-        if t in _TYPE_MAP:
-            return _TYPE_MAP[t]
-    return "other"
-
-
-def _nearby_search(
-    gmaps: googlemaps.Client,
-    origin_lat: float,
-    origin_lng: float,
-    radius_meters: int,
-    categories: list[str] | None,
-) -> list[dict[str, Any]]:
-    """Run Nearby Search. Returns raw place dicts."""
-    place_types = _SEARCH_TYPES
-    if categories:
-        type_map_inv: dict[str, list[str]] = {}
-        for gtype, cat in _TYPE_MAP.items():
-            type_map_inv.setdefault(cat, []).append(gtype)
-        filtered = []
-        for cat in categories:
-            filtered.extend(type_map_inv.get(cat, []))
-        place_types = filtered if filtered else _SEARCH_TYPES
-
-    seen_ids: set[str] = set()
-    results: list[dict[str, Any]] = []
-
-    for ptype in place_types[:5]:  # limit to first 5 types to stay under quota
-        resp = gmaps.places_nearby(
-            location={"lat": origin_lat, "lng": origin_lng},
-            radius=min(radius_meters, 50000),
-            type=ptype,
-        )
-        for place in resp.get("results", []):
-            pid = place.get("place_id", "")
-            if pid and pid not in seen_ids:
-                seen_ids.add(pid)
-                results.append(place)
-        if len(results) >= 100:
-            break
-
-    return results
-
-
-def _distance_matrix_filter(
-    gmaps: googlemaps.Client,
-    origin_lat: float,
-    origin_lng: float,
-    places: list[dict[str, Any]],
-    max_drive_seconds: int,
-) -> list[dict[str, Any]]:
-    """Return places whose driving time from origin is ≤ max_drive_seconds, with timing data."""
-    origin = f"{origin_lat},{origin_lng}"
-    confirmed: list[dict[str, Any]] = []
-
-    for i in range(0, len(places), _MATRIX_BATCH):
-        batch = places[i : i + _MATRIX_BATCH]
-        destinations = [
-            f"{p['geometry']['location']['lat']},{p['geometry']['location']['lng']}"
-            for p in batch
-        ]
-        try:
-            matrix = gmaps.distance_matrix(
-                origins=[origin],
-                destinations=destinations,
-                mode="driving",
-            )
-        except Exception:
-            continue
-
-        rows = matrix.get("rows", [])
-        if not rows:
-            continue
-        elements = rows[0].get("elements", [])
-        for place, elem in zip(batch, elements):
-            if elem.get("status") != "OK":
-                continue
-            drive_secs = elem["duration"]["value"]
-            dist_m = elem["distance"]["value"]
-            if drive_secs <= max_drive_seconds:
-                confirmed.append(
-                    {
-                        **place,
-                        "_drive_seconds": drive_secs,
-                        "_distance_meters": dist_m,
-                    }
-                )
-
-    return confirmed
-
-
 def discover_suggestions(
     origin_lat: float,
     origin_lng: float,
@@ -197,14 +66,12 @@ def discover_suggestions(
     limit: int = 50,
 ) -> dict[str, Any]:
     """Full discovery pipeline. Returns {isochrone_geojson, suggestions}."""
-    gmaps = _gmaps()
+    gmaps = places.get_client()
 
     # 1. Isochrone
     isochrone = fetch_isochrone(origin_lat, origin_lng, max_drive_minutes)
 
     # 2. Compute search radius from bbox diagonal (metres)
-    import math
-
     min_lat, min_lng, max_lat, max_lng = _bbox_from_polygon(isochrone)
     lat_span = (max_lat - min_lat) * 111_000  # approx metres
     lng_span = (max_lng - min_lng) * 111_000 * math.cos(math.radians(origin_lat))
@@ -212,11 +79,13 @@ def discover_suggestions(
     search_radius = max(5_000, min(search_radius, 50_000))
 
     # 3. Nearby search
-    places = _nearby_search(gmaps, origin_lat, origin_lng, search_radius, categories)
+    found = places.nearby_search(gmaps, origin_lat, origin_lng, search_radius, categories)
 
     # 4. Distance Matrix filter
     max_drive_seconds = max_drive_minutes * 60
-    confirmed = _distance_matrix_filter(gmaps, origin_lat, origin_lng, places, max_drive_seconds)
+    confirmed = places.distance_matrix_filter(
+        gmaps, origin_lat, origin_lng, found, max_drive_seconds
+    )
 
     # 5. Build suggestion dicts, sort by drive time, cap at limit
     confirmed.sort(key=lambda p: p["_drive_seconds"])
@@ -230,7 +99,7 @@ def discover_suggestions(
                 "address": place.get("vicinity") or place.get("formatted_address", ""),
                 "lat": loc["lat"],
                 "lng": loc["lng"],
-                "category": _classify(place),
+                "category": places.classify(place),
                 "drive_seconds_from_start": place["_drive_seconds"],
                 "distance_meters_from_start": place["_distance_meters"],
                 "rating": place.get("rating"),

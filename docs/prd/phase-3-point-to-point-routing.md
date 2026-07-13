@@ -146,3 +146,7 @@ Response shape:
 - For the map on the frontend, use `@vis.gl/react-google-maps` (the official React wrapper for Google Maps).
 - Debounce waypoint changes before triggering recalculation — wait 500ms after the last mutation before calling the route endpoint.
 - The Maps API key used in the backend should have HTTP referrer restrictions disabled (server-to-server). Create a separate key for any client-side autocomplete widget restricted to your domain.
+
+---
+
+See also: [phase-7-corridor-and-itinerary-optimization.md](./phase-7-corridor-and-itinerary-optimization.md) — adds discovery of stops *along* the calculated route within a detour budget.

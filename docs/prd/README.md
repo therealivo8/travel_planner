@@ -5,6 +5,8 @@ A web application for planning car road trips. Users create trips in one of two 
 - **Point-to-point**: defined start and end destination with optional waypoints.
 - **Radius mode**: starting location + max drive time; the app surfaces reachable destinations.
 
+Both modes go beyond simple point-A-to-point-B navigation: point-to-point trips can discover stops *along the route* within an acceptable detour, and radius trips can auto-build a time-budgeted day itinerary rather than just a naive stop list.
+
 **Tech stack**: Next.js 15 (App Router) · FastAPI · PostgreSQL 16 · OpenAPI 3.1 · Anthropic Claude
 
 ---
@@ -20,6 +22,7 @@ A web application for planning car road trips. Users create trips in one of two 
 | 4 | [phase-4-radius-mode.md](./phase-4-radius-mode.md) | Phase 3 | Isochrone, POI discovery, radius trip flow |
 | 5 | [phase-5-trip-management.md](./phase-5-trip-management.md) | Phase 4 | Itinerary builder, sharing, PDF export, dashboard |
 | 6 | [phase-6-llm-integration.md](./phase-6-llm-integration.md) | Phase 5 | Claude AI — natural language planning, suggestions, chat |
+| 7 | [phase-7-corridor-and-itinerary-optimization.md](./phase-7-corridor-and-itinerary-optimization.md) | Phase 5 | Corridor stop discovery (point-to-point), radius itinerary optimization |
 
 ---
 
@@ -32,7 +35,8 @@ Phase 1 (Foundation) ─────┘
             └── Phase 3 (Point-to-Point Routing)
                     └── Phase 4 (Radius Mode)
                             └── Phase 5 (Trip Management)
-                                    └── Phase 6 (LLM Integration)
+                                    ├── Phase 6 (LLM Integration)
+                                    └── Phase 7 (Corridor Stops & Itinerary Optimization)
 ```
 
 Each phase is designed to be independently workable in a single agent session with a focused context window.

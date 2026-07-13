@@ -1,3 +1,4 @@
+import logging
 import uuid
 from typing import Annotated
 
@@ -12,16 +13,24 @@ from app.core.deps import CurrentUser
 from app.db.session import get_db
 from app.models.trip import RadiusSuggestion, Trip, Waypoint
 from app.schemas.trip import (
+    ItineraryBuildOut,
+    ItineraryBuildRequest,
     RadiusDiscoverResponse,
     RadiusSelectRequest,
     RadiusSuggestionOut,
     TripOut,
+    WaypointOut,
 )
+from app.services import itinerary_builder
 from app.services import radius as radius_svc
 from app.services import routes as route_svc
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(tags=["radius"])
 limiter = Limiter(key_func=get_remote_address)
+
+BUDGET_MULTIPLIER = 2  # round-trip budget = max_drive_minutes * BUDGET_MULTIPLIER
 
 DB = Annotated[AsyncSession, Depends(get_db)]
 
@@ -69,8 +78,10 @@ async def discover(
             limit=50,
         )
     except ValueError as exc:
+        logger.exception("Discovery ValueError")
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
     except Exception as exc:
+        logger.exception("Discovery failed")
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=f"Discovery failed: {exc}",
@@ -223,6 +234,150 @@ async def select_suggestions(
         select(Trip).where(Trip.id == trip_id).options(selectinload(Trip.waypoints))
     )
     return TripOut.model_validate(final.scalar_one())
+
+
+@router.post("/trips/{trip_id}/radius/build-itinerary", response_model=ItineraryBuildOut)
+@limiter.limit("10/hour")
+async def build_itinerary(
+    request: Request,
+    trip_id: uuid.UUID,
+    body: ItineraryBuildRequest,
+    current_user: CurrentUser,
+    db: DB,
+) -> ItineraryBuildOut:
+    trip = await _get_radius_trip(trip_id, current_user.id, db)
+
+    if trip.max_drive_minutes is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="max_drive_minutes is not set on this trip",
+        )
+
+    result = await db.execute(
+        select(RadiusSuggestion).where(
+            RadiusSuggestion.trip_id == trip_id,
+            RadiusSuggestion.id.in_(body.suggestion_ids),
+        )
+    )
+    suggestions = result.scalars().all()
+    if len(suggestions) != len(body.suggestion_ids):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="One or more suggestion IDs not found for this trip",
+        )
+
+    budget_minutes = trip.max_drive_minutes * BUDGET_MULTIPLIER
+
+    try:
+        build_result = itinerary_builder.build_ordered_itinerary(
+            origin=(float(trip.start_lat), float(trip.start_lng)),
+            stops=[
+                {
+                    "id": sg.id,
+                    "lat": float(sg.lat),
+                    "lng": float(sg.lng),
+                    "stop_duration_minutes": body.stop_duration_minutes,
+                }
+                for sg in suggestions
+            ],
+            budget_minutes=budget_minutes,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+
+    kept_ids = set(build_result["ordered_stop_ids"])
+    dropped_ids = set(build_result["dropped_stop_ids"])
+    suggestions_by_id = {sg.id: sg for sg in suggestions}
+
+    for sg in trip.radius_suggestions:
+        sg.selected = sg.id in kept_ids
+
+    # Rebuild waypoints in optimized order
+    await db.execute(delete(Waypoint).where(Waypoint.trip_id == trip_id))
+    await db.flush()
+
+    ordered_suggestions = [suggestions_by_id[sid] for sid in build_result["ordered_stop_ids"]]
+    for pos, sg in enumerate(ordered_suggestions):
+        wp = Waypoint(
+            trip_id=trip_id,
+            position=pos,
+            address=sg.address,
+            lat=sg.lat,
+            lng=sg.lng,
+            label=sg.name,
+            place_id=sg.place_id,
+            stop_duration_minutes=body.stop_duration_minutes,
+        )
+        db.add(wp)
+
+    await db.flush()
+
+    waypoint_coords = [(float(sg.lat), float(sg.lng)) for sg in ordered_suggestions]
+
+    try:
+        route_result = route_svc.calculate_route(
+            origin_lat=float(trip.start_lat),
+            origin_lng=float(trip.start_lng),
+            dest_lat=float(trip.start_lat),
+            dest_lng=float(trip.start_lng),
+            waypoint_coords=waypoint_coords,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+
+    trip.total_distance_meters = route_result["total_distance_meters"]
+    trip.total_drive_seconds = route_result["total_drive_seconds"]
+    trip.route_polyline = route_result["route_polyline"]
+    trip.route_raw_response = route_result["raw_response"]
+
+    db.expire_all()
+    refreshed = await db.execute(
+        select(Trip).where(Trip.id == trip_id).options(selectinload(Trip.waypoints))
+    )
+    trip = refreshed.scalar_one()
+    ordered_wps = sorted(trip.waypoints, key=lambda w: w.position)
+    legs = route_result["legs"]
+    for i, wp in enumerate(ordered_wps):
+        if i < len(legs):
+            wp.drive_seconds_from_prev = legs[i]["drive_seconds"]
+            wp.distance_meters_from_prev = legs[i]["distance_meters"]
+
+    await db.commit()
+    db.expire_all()
+
+    final = await db.execute(
+        select(Trip).where(Trip.id == trip_id).options(selectinload(Trip.waypoints))
+    )
+    final_trip = final.scalar_one()
+    final_waypoints = sorted(final_trip.waypoints, key=lambda w: w.position)
+
+    total_drive_seconds = final_trip.total_drive_seconds or 0
+    total_stop_minutes = build_result["total_stop_minutes"]
+    total_trip_minutes = total_drive_seconds // 60 + total_stop_minutes
+    over_under_minutes = total_trip_minutes - budget_minutes
+
+    # If every selected stop had to be dropped to fit, there's no usable itinerary —
+    # report this as over budget (using the cheapest single stop's round-trip cost as
+    # the reference) rather than a trivially-fitting empty itinerary.
+    no_stops_kept = len(suggestions) > 0 and len(kept_ids) == 0
+    if no_stops_kept:
+        within_budget = False
+        cheapest_minutes = build_result["cheapest_single_stop_minutes"]
+        over_under_minutes = cheapest_minutes - budget_minutes
+    else:
+        within_budget = over_under_minutes <= 0
+
+    return ItineraryBuildOut(
+        trip_id=trip_id,
+        waypoints=[WaypointOut.model_validate(w) for w in final_waypoints],
+        total_drive_seconds=total_drive_seconds,
+        total_stop_minutes=total_stop_minutes,
+        total_trip_minutes=total_trip_minutes,
+        budget_minutes=budget_minutes,
+        within_budget=within_budget,
+        over_under_minutes=over_under_minutes,
+        dropped_suggestion_ids=list(dropped_ids),
+    )
 
 
 @router.delete(

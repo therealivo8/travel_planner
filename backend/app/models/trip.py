@@ -91,6 +91,9 @@ class Trip(Base):
     itinerary_days: Mapped[list["ItineraryDay"]] = relationship(
         "ItineraryDay", back_populates="trip", cascade="all, delete-orphan", order_by="ItineraryDay.day_number"
     )
+    corridor_suggestions: Mapped[list["CorridorSuggestion"]] = relationship(
+        "CorridorSuggestion", back_populates="trip", cascade="all, delete-orphan"
+    )
 
 
 class Waypoint(Base):
@@ -186,3 +189,32 @@ class RadiusSuggestion(Base):
     )
 
     trip: Mapped["Trip"] = relationship("Trip", back_populates="radius_suggestions")
+
+
+class CorridorSuggestion(Base):
+    __tablename__ = "corridor_suggestions"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    trip_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("trips.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    place_id: Mapped[str] = mapped_column(String(300), nullable=False)
+    name: Mapped[str] = mapped_column(String(300), nullable=False)
+    address: Mapped[str] = mapped_column(Text, nullable=False)
+    lat: Mapped[float] = mapped_column(Numeric(10, 7), nullable=False)
+    lng: Mapped[float] = mapped_column(Numeric(10, 7), nullable=False)
+    category: Mapped[str] = mapped_column(String(100), nullable=False)
+    rating: Mapped[float | None] = mapped_column(Numeric(3, 1), nullable=True)
+    detour_seconds: Mapped[int] = mapped_column(Integer, nullable=False)
+    route_fraction: Mapped[float] = mapped_column(Numeric(5, 4), nullable=False)
+    selected: Mapped[bool] = mapped_column(nullable=False, server_default="false")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    trip: Mapped["Trip"] = relationship("Trip", back_populates="corridor_suggestions")

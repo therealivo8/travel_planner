@@ -77,7 +77,15 @@ export function geocodeAddress(q: string) {
   );
 }
 
-import type { RadiusDiscoverResponse, RadiusSelectRequest, Trip } from "@/types";
+import type {
+  CorridorDiscoverResponse,
+  CorridorSelectRequest,
+  ItineraryBuildOut,
+  ItineraryBuildRequest,
+  RadiusDiscoverResponse,
+  RadiusSelectRequest,
+  Trip,
+} from "@/types";
 
 export function discoverRadius(tripId: string, categories?: string[]) {
   const params = categories?.length
@@ -96,4 +104,35 @@ export function selectSuggestions(tripId: string, body: RadiusSelectRequest) {
 
 export function deselectSuggestion(tripId: string, suggestionId: string) {
   return api.delete(`/trips/${tripId}/radius/suggestions/${suggestionId}/select`);
+}
+
+export function buildRadiusItinerary(tripId: string, body: ItineraryBuildRequest) {
+  return api.post<ItineraryBuildOut>(`/trips/${tripId}/radius/build-itinerary`, body);
+}
+
+export function discoverCorridor(
+  tripId: string,
+  opts?: { categories?: string[]; maxDetourMinutes?: number }
+) {
+  const params = new URLSearchParams();
+  opts?.categories?.forEach((c) => params.append("categories", c));
+  if (opts?.maxDetourMinutes != null) {
+    params.set("max_detour_minutes", String(opts.maxDetourMinutes));
+  }
+  const qs = params.toString();
+  return api.post<CorridorDiscoverResponse>(
+    `/trips/${tripId}/corridor/discover${qs ? `?${qs}` : ""}`
+  );
+}
+
+export function getCorridorSuggestions(tripId: string) {
+  return api.get<CorridorDiscoverResponse>(`/trips/${tripId}/corridor/suggestions`);
+}
+
+export function selectCorridorSuggestions(tripId: string, body: CorridorSelectRequest) {
+  return api.post<Trip>(`/trips/${tripId}/corridor/select`, body);
+}
+
+export function deselectCorridorSuggestion(tripId: string, suggestionId: string) {
+  return api.delete(`/trips/${tripId}/corridor/suggestions/${suggestionId}/select`);
 }

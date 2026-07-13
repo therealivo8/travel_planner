@@ -2,7 +2,7 @@
 
 import { Utensils, Trees, Landmark, Building2, HelpCircle, Star, Clock } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { RadiusSuggestion, SuggestionCategory } from "@/types";
+import type { SuggestionCategory } from "@/types";
 
 const CATEGORY_META: Record<
   SuggestionCategory,
@@ -15,19 +15,32 @@ const CATEGORY_META: Record<
   other: { label: "Other", icon: HelpCircle, color: "text-neutral-400" },
 };
 
-function formatDriveTime(seconds: number): string {
+export function formatDriveTime(seconds: number): string {
   const h = Math.floor(seconds / 3600);
   const m = Math.round((seconds % 3600) / 60);
   if (h === 0) return `${m}m`;
   return m === 0 ? `${h}h` : `${h}h ${m}m`;
 }
 
+interface CardSuggestion {
+  id: string;
+  name: string;
+  address: string;
+  category: SuggestionCategory;
+  rating: number | null;
+  selected: boolean;
+}
+
 interface Props {
-  suggestion: RadiusSuggestion;
+  suggestion: CardSuggestion;
+  /** Seconds value to show in the clock badge, e.g. drive time from start, or detour time. */
+  metaSeconds: number;
+  /** Optional prefix for the clock badge, e.g. "+" for a detour. Defaults to "". */
+  metaPrefix?: string;
   onToggle: (id: string) => void;
 }
 
-export function SuggestionCard({ suggestion, onToggle }: Props) {
+export function SuggestionCard({ suggestion, metaSeconds, metaPrefix = "", onToggle }: Props) {
   const meta = CATEGORY_META[suggestion.category] ?? CATEGORY_META.other;
   const Icon = meta.icon;
 
@@ -62,7 +75,8 @@ export function SuggestionCard({ suggestion, onToggle }: Props) {
           <div className="mt-1.5 flex flex-wrap items-center gap-2">
             <span className="inline-flex items-center gap-1 text-xs text-neutral-500">
               <Clock className="h-3 w-3" />
-              {formatDriveTime(suggestion.drive_seconds_from_start)}
+              {metaPrefix}
+              {formatDriveTime(metaSeconds)}
             </span>
             {suggestion.rating != null && (
               <span className="inline-flex items-center gap-1 text-xs text-neutral-500">

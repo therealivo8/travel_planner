@@ -2,15 +2,7 @@
 
 from typing import Any
 
-import googlemaps
-
-from app.config import settings
-
-
-def _client() -> googlemaps.Client:
-    if not settings.maps_api_key:
-        raise ValueError("MAPS_API_KEY is not configured")
-    return googlemaps.Client(key=settings.maps_api_key)
+from app.services import places
 
 
 def calculate_route(
@@ -26,7 +18,7 @@ def calculate_route(
         total_distance_meters, total_drive_seconds, route_polyline,
         legs (list of {distance_meters, drive_seconds}), raw_response
     """
-    gmaps = _client()
+    gmaps = places.get_client()
 
     origin = {"lat": origin_lat, "lng": origin_lng}
     destination = {"lat": dest_lat, "lng": dest_lng}
@@ -69,7 +61,7 @@ def calculate_route(
 
 def geocode_address(address: str) -> dict[str, Any] | None:
     """Geocode an address. Returns {address, lat, lng} or None."""
-    gmaps = _client()
+    gmaps = places.get_client()
     results = gmaps.geocode(address)
     if not results:
         return None

@@ -176,6 +176,51 @@ export interface RadiusSelectRequest {
   generate_route: boolean;
 }
 
+// Phase 7: Corridor stops + radius itinerary builder
+
+export interface CorridorSuggestion {
+  id: string;
+  trip_id: string;
+  place_id: string;
+  name: string;
+  address: string;
+  lat: number;
+  lng: number;
+  category: SuggestionCategory;
+  rating: number | null;
+  detour_seconds: number;
+  route_fraction: number;
+  selected: boolean;
+  created_at: string;
+}
+
+export interface CorridorDiscoverResponse {
+  suggestions: CorridorSuggestion[];
+  max_detour_seconds: number;
+}
+
+export interface CorridorSelectRequest {
+  suggestion_ids: string[];
+  insert_as_waypoints: boolean;
+}
+
+export interface ItineraryBuildRequest {
+  suggestion_ids: string[];
+  stop_duration_minutes?: number;
+}
+
+export interface ItineraryBuildOut {
+  trip_id: string;
+  waypoints: Waypoint[];
+  total_drive_seconds: number;
+  total_stop_minutes: number;
+  total_trip_minutes: number;
+  budget_minutes: number;
+  within_budget: boolean;
+  over_under_minutes: number;
+  dropped_suggestion_ids: string[];
+}
+
 // API response shapes
 
 export interface HealthResponse {

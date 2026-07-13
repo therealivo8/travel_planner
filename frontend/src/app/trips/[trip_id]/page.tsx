@@ -405,6 +405,21 @@ export default function TripDetailPage({
                 {routeError && (
                   <p className="text-xs text-error-500">{routeError}</p>
                 )}
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5 text-xs self-start"
+                  disabled={!hasRoute}
+                  title={hasRoute ? undefined : "Calculate a route to discover stops along the way"}
+                  asChild={hasRoute}
+                >
+                  {hasRoute ? (
+                    <Link href={`/trips/${trip_id}/corridor`}>Find stops along the way</Link>
+                  ) : (
+                    <span>Find stops along the way</span>
+                  )}
+                </Button>
               </div>
             )}
 

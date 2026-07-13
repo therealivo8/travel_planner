@@ -7,18 +7,17 @@ import { ArrowLeft, RefreshCw, Map as MapIcon, List } from "lucide-react";
 import { AdvancedMarker, Pin } from "@vis.gl/react-google-maps";
 import {
   api,
-  buildRadiusItinerary,
-  discoverRadius,
-  getRadiusSuggestions,
-  selectSuggestions,
+  discoverCorridor,
+  getCorridorSuggestions,
+  selectCorridorSuggestions,
 } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
-import { GoogleMapsProvider, TripMap, IsochroneLayer } from "@/components/routing";
+import { GoogleMapsProvider, TripMap } from "@/components/routing";
 import { SuggestionCard } from "@/components/radius";
 import { cn } from "@/lib/utils";
-import type { Trip, RadiusSuggestion, GeoJSONPolygon, SuggestionCategory } from "@/types";
+import type { Trip, CorridorSuggestion, SuggestionCategory } from "@/types";
 
 const CATEGORIES: { value: SuggestionCategory | "all"; label: string }[] = [
   { value: "all", label: "All" },
@@ -36,7 +35,9 @@ const CATEGORY_COLORS: Record<SuggestionCategory, string> = {
   other: "#6B7280",
 };
 
-export default function DiscoverPage({
+const DETOUR_OPTIONS = [5, 10, 15, 30, 60];
+
+export default function CorridorPage({
   params,
 }: {
   params: Promise<{ trip_id: string }>;
@@ -45,16 +46,12 @@ export default function DiscoverPage({
   const router = useRouter();
 
   const [trip, setTrip] = useState<Trip | null>(null);
-  const [suggestions, setSuggestions] = useState<RadiusSuggestion[]>([]);
-  const [isochrone, setIsochrone] = useState<GeoJSONPolygon | null>(null);
+  const [suggestions, setSuggestions] = useState<CorridorSuggestion[]>([]);
   const [activeCategory, setActiveCategory] = useState<SuggestionCategory | "all">("all");
+  const [maxDetourMinutes, setMaxDetourMinutes] = useState(15);
   const [discovering, setDiscovering] = useState(false);
   const [buildingRoute, setBuildingRoute] = useState(false);
-  const [buildingItinerary, setBuildingItinerary] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [itineraryFeedback, setItineraryFeedback] = useState<
-    { level: "success" | "warning" | "error"; message: string } | null
-  >(null);
   const [initialLoading, setInitialLoading] = useState(true);
   const [mobileView, setMobileView] = useState<"map" | "list">("map");
   const hasRunDiscovery = useRef(false);
@@ -66,25 +63,22 @@ export default function DiscoverPage({
   }, [trip_id]);
 
   const runDiscovery = useCallback(
-    async (categoriesFilter?: SuggestionCategory[]) => {
+    async (categoriesFilter?: SuggestionCategory[], detourMinutes?: number) => {
       setDiscovering(true);
       setError(null);
       try {
-        const result = await discoverRadius(
-          trip_id,
-          categoriesFilter?.length ? categoriesFilter : undefined
-        );
+        const result = await discoverCorridor(trip_id, {
+          categories: categoriesFilter?.length ? categoriesFilter : undefined,
+          maxDetourMinutes: detourMinutes ?? maxDetourMinutes,
+        });
         setSuggestions(result.suggestions);
-        if (result.isochrone_geojson && "coordinates" in result.isochrone_geojson) {
-          setIsochrone(result.isochrone_geojson as GeoJSONPolygon);
-        }
       } catch (err) {
         setError(err instanceof Error ? err.message : "Discovery failed");
       } finally {
         setDiscovering(false);
       }
     },
-    [trip_id]
+    [trip_id, maxDetourMinutes]
   );
 
   // On mount: load trip, then try loading cached suggestions. If none, run discovery.
@@ -95,18 +89,19 @@ export default function DiscoverPage({
     (async () => {
       try {
         const t = await loadTrip();
-        if (t.mode !== "radius") {
+        if (t.mode !== "point_to_point") {
           router.replace(`/trips/${trip_id}`);
           return;
         }
-        // Try cached suggestions first
+        if (!t.route_polyline) {
+          setError("Calculate a route for this trip before discovering stops along the way.");
+          setInitialLoading(false);
+          return;
+        }
         try {
-          const cached = await getRadiusSuggestions(trip_id);
+          const cached = await getCorridorSuggestions(trip_id);
           if (cached.suggestions.length > 0) {
             setSuggestions(cached.suggestions);
-            if (cached.isochrone_geojson && "coordinates" in cached.isochrone_geojson) {
-              setIsochrone(cached.isochrone_geojson as GeoJSONPolygon);
-            }
             setInitialLoading(false);
             return;
           }
@@ -135,49 +130,20 @@ export default function DiscoverPage({
     setBuildingRoute(true);
     setError(null);
     try {
-      await selectSuggestions(trip_id, {
+      await selectCorridorSuggestions(trip_id, {
         suggestion_ids: selectedIds,
-        generate_route: true,
+        insert_as_waypoints: true,
       });
       router.push(`/trips/${trip_id}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to build route");
+      setError(err instanceof Error ? err.message : "Failed to add stops");
       setBuildingRoute(false);
     }
   }
 
-  async function handleBuildItinerary() {
-    if (selectedIds.length === 0) return;
-    setBuildingItinerary(true);
-    setError(null);
-    setItineraryFeedback(null);
-    try {
-      const result = await buildRadiusItinerary(trip_id, {
-        suggestion_ids: selectedIds,
-        stop_duration_minutes: 30,
-      });
-
-      if (result.within_budget) {
-        const slack = Math.abs(result.over_under_minutes);
-        setItineraryFeedback({
-          level: "success",
-          message:
-            result.dropped_suggestion_ids.length > 0
-              ? `Dropped ${result.dropped_suggestion_ids.length} stop(s) to fit your ${result.budget_minutes}-minute round-trip budget. Remaining stops fit with ${slack} minutes to spare.`
-              : `Fits your ${result.budget_minutes}-minute round trip with ${slack} minutes to spare.`,
-        });
-        setTimeout(() => router.push(`/trips/${trip_id}`), 1500);
-      } else {
-        setItineraryFeedback({
-          level: "error",
-          message: `This itinerary exceeds your ${result.budget_minutes}-minute limit by ${result.over_under_minutes} minutes even with the fewest stops possible — remove a stop and try again.`,
-        });
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to build itinerary");
-    } finally {
-      setBuildingItinerary(false);
-    }
+  function handleDetourChange(minutes: number) {
+    setMaxDetourMinutes(minutes);
+    runDiscovery(undefined, minutes);
   }
 
   const visibleSuggestions =
@@ -208,8 +174,39 @@ export default function DiscoverPage({
     );
   }
 
+  if (!trip.route_polyline) {
+    return (
+      <div className="min-h-screen bg-neutral-50 flex flex-col items-center justify-center gap-4 px-4 text-center">
+        <p className="text-sm text-neutral-600">{error}</p>
+        <Button asChild>
+          <Link href={`/trips/${trip_id}`}>Back to trip</Link>
+        </Button>
+      </div>
+    );
+  }
+
   const SidebarContent = (
     <div className="flex flex-col gap-3 h-full">
+      {/* Max detour selector */}
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-xs text-neutral-500">Max detour:</span>
+        {DETOUR_OPTIONS.map((minutes) => (
+          <button
+            key={minutes}
+            type="button"
+            onClick={() => handleDetourChange(minutes)}
+            className={cn(
+              "rounded-full px-3 py-1 text-xs font-medium border transition-colors",
+              maxDetourMinutes === minutes
+                ? "bg-primary-500 border-primary-500 text-white"
+                : "bg-white border-neutral-200 text-neutral-600 hover:border-neutral-400"
+            )}
+          >
+            {minutes}m
+          </button>
+        ))}
+      </div>
+
       {/* Category filters */}
       <div className="flex flex-wrap gap-2">
         {CATEGORIES.map((cat) => (
@@ -254,56 +251,35 @@ export default function DiscoverPage({
             <Skeleton key={i} className="h-24 w-full rounded-xl" />
           ))
         ) : visibleSuggestions.length === 0 ? (
-          <p className="text-sm text-neutral-400 text-center py-8">No places found.</p>
+          <p className="text-sm text-neutral-400 text-center py-8">
+            No stops found within {maxDetourMinutes} min detour.
+          </p>
         ) : (
           visibleSuggestions.map((s) => (
             <SuggestionCard
               key={s.id}
               suggestion={s}
-              metaSeconds={s.drive_seconds_from_start}
+              metaSeconds={s.detour_seconds}
+              metaPrefix="+"
               onToggle={toggleSuggestion}
             />
           ))
         )}
       </div>
 
-      {/* Build route / itinerary CTA */}
-      <div className="pt-2 border-t border-neutral-100 flex flex-col gap-2">
+      {/* Add stops CTA */}
+      <div className="pt-2 border-t border-neutral-100">
         {selectedIds.length > 0 && (
-          <p className="text-xs text-neutral-500">
+          <p className="text-xs text-neutral-500 mb-2">
             {selectedIds.length} stop{selectedIds.length !== 1 ? "s" : ""} selected
           </p>
         )}
-
-        {itineraryFeedback && (
-          <p
-            className={cn(
-              "text-xs rounded-lg px-3 py-2 border",
-              itineraryFeedback.level === "success" &&
-                "text-green-700 bg-green-50 border-green-200",
-              itineraryFeedback.level === "warning" &&
-                "text-amber-700 bg-amber-50 border-amber-200",
-              itineraryFeedback.level === "error" && "text-error-500 bg-red-50 border-red-200"
-            )}
-          >
-            {itineraryFeedback.message}
-          </p>
-        )}
-
         <Button
-          className="w-full"
-          disabled={selectedIds.length === 0 || buildingItinerary}
-          onClick={handleBuildItinerary}
-        >
-          {buildingItinerary ? "Building itinerary…" : "Build Day Itinerary"}
-        </Button>
-        <Button
-          variant="outline"
           className="w-full"
           disabled={selectedIds.length === 0 || buildingRoute}
           onClick={handleBuildRoute}
         >
-          {buildingRoute ? "Building route…" : "Build Route (all stops, unordered)"}
+          {buildingRoute ? "Adding stops…" : "Add Stops to Route"}
         </Button>
       </div>
     </div>
@@ -317,21 +293,21 @@ export default function DiscoverPage({
           <div className="max-w-6xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between gap-3">
             <div className="flex items-center gap-3 min-w-0">
               <Button variant="ghost" size="icon" asChild>
-                <Link href="/trips">
+                <Link href={`/trips/${trip_id}`}>
                   <ArrowLeft className="h-4 w-4" />
                 </Link>
               </Button>
               <div className="min-w-0">
                 <h1 className="text-lg font-semibold text-neutral-900 truncate">{trip.title}</h1>
                 <p className="text-xs text-neutral-500">
-                  {trip.max_drive_minutes}min drive radius from {trip.start_address}
+                  Stops along the way from {trip.start_address} to {trip.end_address}
                 </p>
               </div>
             </div>
 
             <div className="flex items-center gap-2">
               <Badge variant="outline" className="text-xs shrink-0">
-                {suggestions.length} places found
+                {suggestions.length} stops found
               </Badge>
 
               {/* Mobile: map/list toggle */}
@@ -366,14 +342,13 @@ export default function DiscoverPage({
                 startLat={trip.start_lat}
                 startLng={trip.start_lng}
                 startAddress={trip.start_address}
-                endLat={null}
-                endLng={null}
-                endAddress={null}
+                endLat={trip.end_lat}
+                endLng={trip.end_lng}
+                endAddress={trip.end_address}
                 waypoints={[]}
-                routePolyline={null}
+                routePolyline={trip.route_polyline}
                 layers={
                   <>
-                    {isochrone && <IsochroneLayer geojson={isochrone} />}
                     {visibleSuggestions.map((s) => (
                       <AdvancedMarker
                         key={s.id}
@@ -408,14 +383,13 @@ export default function DiscoverPage({
                   startLat={trip.start_lat}
                   startLng={trip.start_lng}
                   startAddress={trip.start_address}
-                  endLat={null}
-                  endLng={null}
-                  endAddress={null}
+                  endLat={trip.end_lat}
+                  endLng={trip.end_lng}
+                  endAddress={trip.end_address}
                   waypoints={[]}
-                  routePolyline={null}
+                  routePolyline={trip.route_polyline}
                   layers={
                     <>
-                      {isochrone && <IsochroneLayer geojson={isochrone} />}
                       {visibleSuggestions.map((s) => (
                         <AdvancedMarker
                           key={s.id}
@@ -441,17 +415,17 @@ export default function DiscoverPage({
               </div>
             )}
 
-            {/* Floating build button on map view — switch to List for the unordered option */}
+            {/* Floating CTA on map view */}
             {mobileView === "map" && selectedIds.length > 0 && (
               <div className="fixed bottom-6 left-0 right-0 flex justify-center px-4 z-10">
                 <Button
                   className="shadow-lg px-8"
-                  disabled={buildingItinerary}
-                  onClick={handleBuildItinerary}
+                  disabled={buildingRoute}
+                  onClick={handleBuildRoute}
                 >
-                  {buildingItinerary
-                    ? "Building itinerary…"
-                    : `Build Day Itinerary (${selectedIds.length} stop${selectedIds.length !== 1 ? "s" : ""})`}
+                  {buildingRoute
+                    ? "Adding stops…"
+                    : `Add Stops (${selectedIds.length})`}
                 </Button>
               </div>
             )}

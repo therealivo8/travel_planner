@@ -35,7 +35,8 @@ const radiusSchema = baseSchema.extend({
   max_drive_minutes: z
     .number({ error: "Invalid number" })
     .int()
-    .positive("Must be a positive number"),
+    .positive("Must be a positive number")
+    .max(60, "Maximum is 60 minutes (ORS free tier limit)"),
 });
 
 type FieldErrors = Partial<Record<string, string>>;
