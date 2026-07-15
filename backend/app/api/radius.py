@@ -21,7 +21,7 @@ from app.schemas.trip import (
     TripOut,
     WaypointOut,
 )
-from app.services import itinerary_builder
+from app.services import itinerary_builder, places
 from app.services import radius as radius_svc
 from app.services import routes as route_svc
 
@@ -53,7 +53,7 @@ async def _get_radius_trip(trip_id: uuid.UUID, user_id: uuid.UUID, db: AsyncSess
 
 
 @router.post("/trips/{trip_id}/radius/discover", response_model=RadiusDiscoverResponse)
-@limiter.limit("3/hour")
+@limiter.limit("10/hour")
 async def discover(
     request: Request,
     trip_id: uuid.UUID,
@@ -106,6 +106,7 @@ async def discover(
             drive_seconds_from_start=s["drive_seconds_from_start"],
             distance_meters_from_start=s["distance_meters_from_start"],
             rating=s["rating"],
+            user_ratings_total=s["user_ratings_total"],
             selected=False,
         )
         db.add(suggestion)
@@ -131,20 +132,34 @@ async def get_suggestions(
     trip = await _get_radius_trip(trip_id, current_user.id, db)
 
     result = await db.execute(
-        select(RadiusSuggestion)
-        .where(RadiusSuggestion.trip_id == trip_id)
-        .order_by(RadiusSuggestion.drive_seconds_from_start)
+        select(RadiusSuggestion).where(RadiusSuggestion.trip_id == trip_id)
     )
     suggestions = result.scalars().all()
 
+    # Re-apply the same time-bucket + quality ranking used at discovery time, rather
+    # than a plain ORDER BY drive_seconds_from_start, so cached reads match what the
+    # user saw right after discovery instead of reverting to pure distance order.
+    ranked = places.rank_by_time_bucket_then_quality(
+        [
+            {
+                "_drive_seconds": sg.drive_seconds_from_start,
+                "rating": sg.rating,
+                "user_ratings_total": sg.user_ratings_total,
+                "_ref": sg,
+            }
+            for sg in suggestions
+        ],
+        "_drive_seconds",
+    )
+
     return RadiusDiscoverResponse(
         isochrone_geojson=trip.radius_isochrone_geojson or {},
-        suggestions=[RadiusSuggestionOut.model_validate(sg) for sg in suggestions],
+        suggestions=[RadiusSuggestionOut.model_validate(r["_ref"]) for r in ranked],
     )
 
 
 @router.post("/trips/{trip_id}/radius/select", response_model=TripOut)
-@limiter.limit("20/hour")
+@limiter.limit("25/hour")
 async def select_suggestions(
     request: Request,
     trip_id: uuid.UUID,
@@ -237,7 +252,7 @@ async def select_suggestions(
 
 
 @router.post("/trips/{trip_id}/radius/build-itinerary", response_model=ItineraryBuildOut)
-@limiter.limit("10/hour")
+@limiter.limit("15/hour")
 async def build_itinerary(
     request: Request,
     trip_id: uuid.UUID,

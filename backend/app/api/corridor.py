@@ -19,6 +19,7 @@ from app.schemas.trip import (
     TripOut,
 )
 from app.services import corridor as corridor_svc
+from app.services import places
 from app.services import routes as route_svc
 
 logger = logging.getLogger(__name__)
@@ -52,7 +53,7 @@ async def _get_p2p_trip_with_route(trip_id: uuid.UUID, user_id: uuid.UUID, db: A
 
 
 @router.post("/trips/{trip_id}/corridor/discover", response_model=CorridorDiscoverResponse)
-@limiter.limit("3/hour")
+@limiter.limit("10/hour")
 async def discover_corridor(
     request: Request,
     trip_id: uuid.UUID,
@@ -100,6 +101,7 @@ async def discover_corridor(
             lng=s["lng"],
             category=s["category"],
             rating=s["rating"],
+            user_ratings_total=s["user_ratings_total"],
             detour_seconds=s["detour_seconds"],
             route_fraction=s["route_fraction"],
             selected=False,
@@ -126,22 +128,35 @@ async def get_corridor_suggestions(
     await _get_p2p_trip_with_route(trip_id, current_user.id, db)
 
     result = await db.execute(
-        select(CorridorSuggestion)
-        .where(CorridorSuggestion.trip_id == trip_id)
-        .order_by(CorridorSuggestion.detour_seconds)
+        select(CorridorSuggestion).where(CorridorSuggestion.trip_id == trip_id)
     )
     suggestions = result.scalars().all()
 
     max_detour_seconds = max((s.detour_seconds for s in suggestions), default=0)
 
+    # Re-apply the same time-bucket + quality ranking used at discovery time (see
+    # radius.py's get_suggestions for why a plain ORDER BY isn't used here).
+    ranked = places.rank_by_time_bucket_then_quality(
+        [
+            {
+                "_detour_seconds": sg.detour_seconds,
+                "rating": sg.rating,
+                "user_ratings_total": sg.user_ratings_total,
+                "_ref": sg,
+            }
+            for sg in suggestions
+        ],
+        "_detour_seconds",
+    )
+
     return CorridorDiscoverResponse(
-        suggestions=[CorridorSuggestionOut.model_validate(sg) for sg in suggestions],
+        suggestions=[CorridorSuggestionOut.model_validate(r["_ref"]) for r in ranked],
         max_detour_seconds=max_detour_seconds,
     )
 
 
 @router.post("/trips/{trip_id}/corridor/select", response_model=TripOut)
-@limiter.limit("20/hour")
+@limiter.limit("25/hour")
 async def select_corridor_suggestions(
     request: Request,
     trip_id: uuid.UUID,

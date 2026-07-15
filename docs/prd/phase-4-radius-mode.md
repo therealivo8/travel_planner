@@ -56,6 +56,7 @@ ORS_API_KEY=<OpenRouteService key>
 | `drive_seconds_from_start` | INTEGER | |
 | `distance_meters_from_start` | INTEGER | |
 | `rating` | NUMERIC(3,1) | Google Places rating |
+| `user_ratings_total` | INTEGER | Google review count — added in Phase 7 for quality ranking, see [phase-7](./phase-7-corridor-and-itinerary-optimization.md#part-c-quality-aware-ranking) |
 | `selected` | BOOLEAN | default false — user has added to trip |
 | `created_at` | TIMESTAMPTZ | |
 

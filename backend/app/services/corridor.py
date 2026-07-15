@@ -8,7 +8,9 @@ Pipeline:
    - direct_drive_seconds via Google Distance Matrix.
 5. Filter to candidates within max_detour_minutes. Attach route_fraction (0.0-1.0 position
    along the route where the candidate was found, for ordering/interleaving with waypoints).
-6. Sort by detour_seconds ascending, cap at limit.
+6. Rank into 5-minute detour buckets, then by quality_score (rating x review volume)
+   descending within each bucket — see app/services/places.py:rank_by_time_bucket_then_quality.
+   Cap at limit.
 
 This function takes plain geometry/numeric inputs and returns plain dicts — no FastAPI/DB
 coupling — so a future LLM-based suggestion feature can call it directly to get a
@@ -95,6 +97,9 @@ def discover_corridor_suggestions(
     candidates: list[dict[str, Any]] = []
     for (lat, lng), fraction in samples:
         found = places.nearby_search(gmaps, lat, lng, SEARCH_RADIUS_METERS, categories)
+        # Drop low-rating/low-review noise before spending Distance Matrix calls
+        # confirming detour times for places we'd exclude anyway.
+        found = places.filter_by_quality(found)
         for place in found:
             pid = place.get("place_id", "")
             if not pid or pid in seen_place_ids:
@@ -111,10 +116,10 @@ def discover_corridor_suggestions(
         direct_drive_seconds,
         max_detour_seconds,
     )
-    confirmed.sort(key=lambda c: c["_detour_seconds"])
+    ranked = places.rank_by_time_bucket_then_quality(confirmed, "_detour_seconds")
 
     suggestions = []
-    for place in confirmed[:limit]:
+    for place in ranked[:limit]:
         loc = place["geometry"]["location"]
         suggestions.append(
             {
@@ -125,6 +130,8 @@ def discover_corridor_suggestions(
                 "lng": loc["lng"],
                 "category": places.classify(place),
                 "rating": place.get("rating"),
+                "user_ratings_total": place.get("user_ratings_total"),
+                "quality_score": places.quality_score(place),
                 "detour_seconds": place["_detour_seconds"],
                 "route_fraction": place["_route_fraction"],
             }

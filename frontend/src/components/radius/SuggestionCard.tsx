@@ -28,7 +28,14 @@ interface CardSuggestion {
   address: string;
   category: SuggestionCategory;
   rating: number | null;
+  user_ratings_total: number | null;
   selected: boolean;
+}
+
+// Compact review-count formatting: 1,240 -> "1.2k", 340 -> "340".
+function formatReviewCount(count: number): string {
+  if (count < 1000) return String(count);
+  return `${(count / 1000).toFixed(1)}k`;
 }
 
 interface Props {
@@ -82,6 +89,13 @@ export function SuggestionCard({ suggestion, metaSeconds, metaPrefix = "", onTog
               <span className="inline-flex items-center gap-1 text-xs text-neutral-500">
                 <Star className="h-3 w-3 fill-amber-400 text-amber-400" />
                 {suggestion.rating.toFixed(1)}
+                {/* Review count gives the rating context — a 5.0 from 2 reviews
+                    reads very differently from a 4.6 from thousands. */}
+                {suggestion.user_ratings_total != null && (
+                  <span className="text-neutral-400">
+                    ({formatReviewCount(suggestion.user_ratings_total)})
+                  </span>
+                )}
               </span>
             )}
             <span

@@ -183,6 +183,7 @@ class RadiusSuggestion(Base):
     drive_seconds_from_start: Mapped[int] = mapped_column(Integer, nullable=False)
     distance_meters_from_start: Mapped[int] = mapped_column(Integer, nullable=False)
     rating: Mapped[float | None] = mapped_column(Numeric(3, 1), nullable=True)
+    user_ratings_total: Mapped[int | None] = mapped_column(Integer, nullable=True)
     selected: Mapped[bool] = mapped_column(nullable=False, server_default="false")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
@@ -210,6 +211,7 @@ class CorridorSuggestion(Base):
     lng: Mapped[float] = mapped_column(Numeric(10, 7), nullable=False)
     category: Mapped[str] = mapped_column(String(100), nullable=False)
     rating: Mapped[float | None] = mapped_column(Numeric(3, 1), nullable=True)
+    user_ratings_total: Mapped[int | None] = mapped_column(Integer, nullable=True)
     detour_seconds: Mapped[int] = mapped_column(Integer, nullable=False)
     route_fraction: Mapped[float] = mapped_column(Numeric(5, 4), nullable=False)
     selected: Mapped[bool] = mapped_column(nullable=False, server_default="false")

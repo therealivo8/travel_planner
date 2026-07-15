@@ -33,7 +33,7 @@ async def _get_owned_trip(trip_id: uuid.UUID, user_id: uuid.UUID, db: AsyncSessi
 
 
 @router.post("/trips/{trip_id}/calculate-route", response_model=TripOut)
-@limiter.limit("10/hour")
+@limiter.limit("20/hour")
 async def calculate_route(
     request: Request,
     trip_id: uuid.UUID,

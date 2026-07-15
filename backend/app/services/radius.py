@@ -4,7 +4,9 @@ Pipeline:
 1. Fetch isochrone polygon from OpenRouteService.
 2. Run Google Places Nearby Search within the bounding box.
 3. Post-filter with Google Distance Matrix to confirm ≤ max_drive_minutes.
-4. Return structured suggestions + raw isochrone GeoJSON.
+4. Rank into 5-minute drive-time buckets, then by quality_score (rating x review
+   volume) descending within each bucket — see app/services/places.py.
+5. Return structured suggestions + raw isochrone GeoJSON.
 """
 
 import math
@@ -78,8 +80,15 @@ def discover_suggestions(
     search_radius = int(math.sqrt(lat_span**2 + lng_span**2) / 2)
     search_radius = max(5_000, min(search_radius, 50_000))
 
-    # 3. Nearby search
-    found = places.nearby_search(gmaps, origin_lat, origin_lng, search_radius, categories)
+    # 3. Nearby search — paginated (single origin per request, so the extra
+    # Google-mandated delay per page is affordable) for a deeper ranking pool.
+    found = places.nearby_search(
+        gmaps, origin_lat, origin_lng, search_radius, categories, paginate=True
+    )
+
+    # 3b. Drop low-rating/low-review noise before spending Distance Matrix calls
+    # confirming drive times for places we'd exclude anyway.
+    found = places.filter_by_quality(found)
 
     # 4. Distance Matrix filter
     max_drive_seconds = max_drive_minutes * 60
@@ -87,10 +96,10 @@ def discover_suggestions(
         gmaps, origin_lat, origin_lng, found, max_drive_seconds
     )
 
-    # 5. Build suggestion dicts, sort by drive time, cap at limit
-    confirmed.sort(key=lambda p: p["_drive_seconds"])
+    # 5. Build suggestion dicts, rank by time bucket then quality, cap at limit
+    ranked = places.rank_by_time_bucket_then_quality(confirmed, "_drive_seconds")
     suggestions = []
-    for place in confirmed[:limit]:
+    for place in ranked[:limit]:
         loc = place["geometry"]["location"]
         suggestions.append(
             {
@@ -103,6 +112,8 @@ def discover_suggestions(
                 "drive_seconds_from_start": place["_drive_seconds"],
                 "distance_meters_from_start": place["_distance_meters"],
                 "rating": place.get("rating"),
+                "user_ratings_total": place.get("user_ratings_total"),
+                "quality_score": places.quality_score(place),
             }
         )
 

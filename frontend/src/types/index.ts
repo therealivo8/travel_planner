@@ -157,6 +157,11 @@ export interface RadiusSuggestion {
   drive_seconds_from_start: number;
   distance_meters_from_start: number;
   rating: number | null;
+  user_ratings_total: number | null;
+  // Backend-computed: rating weighted by log(review count) — see places.quality_score.
+  // Suggestions are pre-sorted by this within each ~5-minute time bucket; exposed here
+  // mainly so the UI can show "why" a place ranks where it does, not for re-sorting.
+  quality_score: number;
   selected: boolean;
   created_at: string;
 }
@@ -188,6 +193,9 @@ export interface CorridorSuggestion {
   lng: number;
   category: SuggestionCategory;
   rating: number | null;
+  user_ratings_total: number | null;
+  // Backend-computed: rating weighted by log(review count) — see places.quality_score.
+  quality_score: number;
   detour_seconds: number;
   route_fraction: number;
   selected: boolean;

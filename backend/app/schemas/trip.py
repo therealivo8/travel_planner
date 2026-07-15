@@ -1,9 +1,10 @@
+import math
 import uuid
 from datetime import date as date_type
 from datetime import datetime, time
 from typing import Any, Literal  # noqa: F401
 
-from pydantic import BaseModel, field_validator, model_validator
+from pydantic import BaseModel, computed_field, field_validator, model_validator
 
 
 class WaypointCreate(BaseModel):
@@ -169,10 +170,21 @@ class RadiusSuggestionOut(BaseModel):
     drive_seconds_from_start: int
     distance_meters_from_start: int
     rating: float | None
+    user_ratings_total: int | None = None
     selected: bool
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+    # Computed on read rather than stored: this keeps quality_score always in sync
+    # with the current scoring formula (in places.quality_score) even for
+    # suggestions that were persisted before a formula change, without a migration.
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def quality_score(self) -> float:
+        if self.rating is None or not self.user_ratings_total:
+            return 0.0
+        return self.rating * math.log10(self.user_ratings_total + 1)
 
 
 class RadiusDiscoverResponse(BaseModel):
@@ -262,12 +274,23 @@ class CorridorSuggestionOut(BaseModel):
     lng: float
     category: str
     rating: float | None
+    user_ratings_total: int | None = None
     detour_seconds: int
     route_fraction: float
     selected: bool
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+    # Computed on read rather than stored: this keeps quality_score always in sync
+    # with the current scoring formula (in places.quality_score) even for
+    # suggestions that were persisted before a formula change, without a migration.
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def quality_score(self) -> float:
+        if self.rating is None or not self.user_ratings_total:
+            return 0.0
+        return self.rating * math.log10(self.user_ratings_total + 1)
 
 
 class CorridorDiscoverResponse(BaseModel):

@@ -65,12 +65,12 @@ Each limited endpoint is decorated with `@limiter.limit(...)` and takes a `reque
 
 ```python
 @router.post("/trips/{trip_id}/radius/discover")
-@limiter.limit("3/hour")
+@limiter.limit("10/hour")
 async def discover(request: Request, trip_id: uuid.UUID, ...):
     ...
 
 @router.post("/trips/{trip_id}/calculate-route")
-@limiter.limit("10/hour")
+@limiter.limit("20/hour")
 async def calculate_route(request: Request, trip_id: uuid.UUID, ...):
     ...
 
@@ -80,7 +80,7 @@ async def geocode(request: Request, ...):
     ...
 
 @router.post("/trips/{trip_id}/radius/select")
-@limiter.limit("20/hour")
+@limiter.limit("25/hour")
 async def select_suggestions(request: Request, trip_id: uuid.UUID, ...):
     ...
 ```
