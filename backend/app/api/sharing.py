@@ -108,10 +108,13 @@ async def get_shared_trip(
                     label=w.label,
                     address=w.address,
                     position=w.position,
+                    day_position=w.day_position,
                     scheduled_arrival_time=w.scheduled_arrival_time,
                     drive_seconds_from_prev=w.drive_seconds_from_prev,
                 )
-                for w in sorted(d.waypoints, key=lambda w: w.position)
+                for w in sorted(
+                    d.waypoints, key=lambda w: (w.day_position is None, w.day_position, w.position)
+                )
             ],
         )
         for d in sorted_days

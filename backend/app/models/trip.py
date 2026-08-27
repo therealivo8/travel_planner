@@ -130,6 +130,9 @@ class Waypoint(Base):
         index=True,
     )
     scheduled_arrival_time: Mapped[time | None] = mapped_column(Time, nullable=True)
+    # Phase 9: order within itinerary_day (independent of the trip-wide `position`,
+    # which also drives route calculation and must not be repurposed for this).
+    day_position: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

@@ -38,6 +38,19 @@ def _set_refresh_cookie(response: Response, token: str) -> None:
     )
 
 
+def _clear_refresh_cookie(response: Response) -> None:
+    # samesite/secure must match _set_refresh_cookie exactly — browsers only delete
+    # a cookie when the clearing Set-Cookie shares its original attributes.
+    is_prod = settings.environment == "production"
+    response.delete_cookie(
+        key=REFRESH_COOKIE,
+        httponly=True,
+        samesite="none" if is_prod else "lax",
+        secure=is_prod,
+        path="/",
+    )
+
+
 @router.post("/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
 async def register(
     body: RegisterRequest,
@@ -108,3 +121,8 @@ async def refresh(
 @router.get("/me", response_model=UserOut)
 async def me(current_user: CurrentUser) -> User:
     return current_user
+
+
+@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
+async def logout(response: Response) -> None:
+    _clear_refresh_cookie(response)

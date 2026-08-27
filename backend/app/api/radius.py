@@ -3,13 +3,12 @@ import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
-from slowapi import Limiter
-from slowapi.util import get_remote_address
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.deps import CurrentUser
+from app.core.limiter import limiter
 from app.db.session import get_db
 from app.models.trip import RadiusSuggestion, Trip, Waypoint
 from app.schemas.trip import (
@@ -28,7 +27,6 @@ from app.services import routes as route_svc
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["radius"])
-limiter = Limiter(key_func=get_remote_address)
 
 BUDGET_MULTIPLIER = 2  # round-trip budget = max_drive_minutes * BUDGET_MULTIPLIER
 
@@ -84,7 +82,7 @@ async def discover(
         logger.exception("Discovery failed")
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"Discovery failed: {exc}",
+            detail="Discovery failed. Please try again.",
         ) from exc
 
     # Clear old suggestions before re-inserting

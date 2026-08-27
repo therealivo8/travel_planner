@@ -1,3 +1,4 @@
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -18,6 +19,18 @@ class Settings(BaseSettings):
     @property
     def cors_origins_list(self) -> list[str]:
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
+
+    @model_validator(mode="after")
+    def _forbid_default_secret_key_in_production(self) -> "Settings":
+        # "changeme" is committed in source, so a prod deploy with a missing/unset
+        # SECRET_KEY env var would otherwise boot fine and sign real JWTs with a
+        # publicly known key. Fail startup instead of accepting requests silently.
+        if self.environment == "production" and self.secret_key == "changeme":
+            raise ValueError(
+                "SECRET_KEY must be set to a real value when ENVIRONMENT=production. "
+                "Refusing to start with the default placeholder key."
+            )
+        return self
 
 
 settings = Settings()

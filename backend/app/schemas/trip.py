@@ -215,6 +215,7 @@ class ItineraryWaypointOut(BaseModel):
     label: str | None
     address: str
     position: int
+    day_position: int | None
     scheduled_arrival_time: time | None
     drive_seconds_from_prev: int | None
 
@@ -253,6 +254,14 @@ class ItineraryDayUpdate(BaseModel):
 
 class AssignWaypointsRequest(BaseModel):
     waypoint_ids: list[uuid.UUID]
+    scheduled_arrival_time: time | None = None
+    # Full ordered list of waypoint IDs for the destination day, used to set/update
+    # day_position for every waypoint that ends up in this day (including ones not
+    # in waypoint_ids, e.g. reordering existing members without reassigning them).
+    ordered_waypoint_ids: list[uuid.UUID] | None = None
+
+
+class SetArrivalTimeRequest(BaseModel):
     scheduled_arrival_time: time | None = None
 
 

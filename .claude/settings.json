@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(psql -U postgres -h 127.0.0.1 -p 5433 -c \"\\\\du\")",
+      "Bash(kill 15711)",
+      "Bash(psql -U node -h 127.0.0.1 -p 5433 -d travel_planner -c \"\\\\d waypoints\")",
+      "Bash(curl -sS -o /dev/null -w \"%{http_code}\\\\n\" -X POST http://localhost:8000/auth/refresh)",
+      "Bash(curl -sS -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:3000/)",
+      "Bash(curl -sS -i -X POST http://localhost:8000/auth/register -H 'Content-Type: application/json' -d '{\"email\":\"test-debug@example.com\",\"password\":\"testpass123\"}')",
+      "Bash(curl -sS -i -X POST http://localhost:3000/api/auth/register -H 'Content-Type: application/json' -d '{\"email\":\"test-debug2@example.com\",\"password\":\"testpass123\"}')",
+      "Bash(curl -sS http://localhost:3000/register)",
+      "Bash(curl -sS -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:3000/register)",
+      "Bash(lsof -iTCP:8000 -sTCP:LISTEN -P)",
+      "Bash(kill 18149 18153)",
+      "Bash(pg_isready -h localhost -p 5432 -q)",
+      "Bash(pg_isready -h 127.0.0.1 -p 5433 -q)",
+      "Bash(timeout 40 ./dev.sh)",
+      "Bash(echo \"started with pid $!\")",
+      "Bash(curl -s -o /dev/null -w \"backend: %{http_code}\\\\n\" http://localhost:8000/docs)",
+      "Bash(curl -s -o /dev/null -w \"frontend: %{http_code}\\\\n\" http://localhost:3000)",
+      "Bash(pkill -f \"uv run uvicorn\")",
+      "Bash(pkill -f \"next dev\")",
+      "Bash(pkill -f \"dev.sh\")"
+    ]
+  }
+}

@@ -20,6 +20,7 @@ import {
   type AddressSelection,
 } from "@/components/routing";
 import type { Trip, Waypoint } from "@/types";
+import { PageShell } from "@/components/layout/PageShell";
 
 const STATUS_VARIANTS: Record<string, "default" | "outline" | "draft" | "success"> = {
   draft: "draft",
@@ -213,14 +214,12 @@ export default function TripDetailPage({
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-neutral-50">
-        <div className="bg-white border-b border-neutral-200">
-          <div className="max-w-5xl mx-auto px-4 sm:px-6 py-4 flex items-center gap-3">
-            <Skeleton className="h-9 w-9 rounded-lg" />
-            <Skeleton className="h-6 w-48" />
-          </div>
+      <PageShell fullWidth className="max-w-5xl mx-auto w-full">
+        <div className="flex items-center gap-3 mb-6">
+          <Skeleton className="h-9 w-9 rounded-lg" />
+          <Skeleton className="h-6 w-48" />
         </div>
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2">
             <Skeleton className="h-[420px] w-full rounded-xl" />
           </div>
@@ -229,20 +228,22 @@ export default function TripDetailPage({
             <Skeleton className="h-60 w-full rounded-xl" />
           </div>
         </div>
-      </div>
+      </PageShell>
     );
   }
 
   if (error || !trip) {
     return (
-      <div className="min-h-screen bg-neutral-50 flex items-center justify-center">
-        <div className="text-center">
-          <p className="text-sm text-error-500 mb-4">{error ?? "Trip not found"}</p>
-          <Button asChild variant="outline">
-            <Link href="/trips">Back to trips</Link>
-          </Button>
+      <PageShell fullBleed>
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-center">
+            <p className="text-sm text-error-500 mb-4">{error ?? "Trip not found"}</p>
+            <Button asChild variant="outline">
+              <Link href="/trips">Back to trips</Link>
+            </Button>
+          </div>
         </div>
-      </div>
+      </PageShell>
     );
   }
 
@@ -253,98 +254,96 @@ export default function TripDetailPage({
 
   return (
     <GoogleMapsProvider>
-      <div className="min-h-screen bg-neutral-50">
-        {/* Header */}
-        <div className="bg-white border-b border-neutral-200">
-          <div className="max-w-5xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3 min-w-0">
-              <Button variant="ghost" size="icon" asChild>
-                <Link href="/trips">
-                  <ArrowLeft className="h-4 w-4" />
-                </Link>
-              </Button>
+      <PageShell fullWidth className="max-w-5xl mx-auto w-full">
+        {/* Page header row */}
+        <div className="flex items-center justify-between gap-3 mb-6">
+          <div className="flex items-center gap-3 min-w-0">
+            <Button variant="ghost" size="icon" asChild>
+              <Link href="/trips">
+                <ArrowLeft className="h-4 w-4" />
+              </Link>
+            </Button>
 
-              {editingTitle ? (
-                <div className="flex items-center gap-2">
-                  <Input
-                    value={draftTitle}
-                    onChange={(e) => setDraftTitle(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") handleSaveTitle();
-                      if (e.key === "Escape") setEditingTitle(false);
-                    }}
-                    className="h-8 text-base font-semibold"
-                    autoFocus
-                  />
-                  <Button size="icon" variant="ghost" className="h-8 w-8" onClick={handleSaveTitle}>
-                    <Check className="h-4 w-4 text-primary-600" />
-                  </Button>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    className="h-8 w-8"
-                    onClick={() => setEditingTitle(false)}
-                  >
-                    <X className="h-4 w-4 text-neutral-400" />
-                  </Button>
-                </div>
-              ) : (
-                <button
-                  onClick={() => {
-                    setDraftTitle(trip.title);
-                    setEditingTitle(true);
+            {editingTitle ? (
+              <div className="flex items-center gap-2">
+                <Input
+                  value={draftTitle}
+                  onChange={(e) => setDraftTitle(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleSaveTitle();
+                    if (e.key === "Escape") setEditingTitle(false);
                   }}
-                  className="flex items-center gap-1.5 group min-w-0"
+                  className="h-8 text-base font-semibold"
+                  autoFocus
+                />
+                <Button size="icon" variant="ghost" className="h-8 w-8" onClick={handleSaveTitle}>
+                  <Check className="h-4 w-4 text-primary-600" />
+                </Button>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-8 w-8"
+                  onClick={() => setEditingTitle(false)}
                 >
-                  <h1 className="text-xl font-semibold text-neutral-900 truncate">{trip.title}</h1>
-                  <PencilLine className="h-3.5 w-3.5 text-neutral-300 group-hover:text-neutral-500 shrink-0" />
-                </button>
-              )}
+                  <X className="h-4 w-4 text-neutral-400" />
+                </Button>
+              </div>
+            ) : (
+              <button
+                onClick={() => {
+                  setDraftTitle(trip.title);
+                  setEditingTitle(true);
+                }}
+                className="flex items-center gap-1.5 group min-w-0"
+              >
+                <h1 className="text-xl font-semibold text-neutral-900 truncate">{trip.title}</h1>
+                <PencilLine className="h-3.5 w-3.5 text-neutral-300 group-hover:text-neutral-500 shrink-0" />
+              </button>
+            )}
 
-              <Badge
-                variant={STATUS_VARIANTS[trip.status] ?? "outline"}
-                className="text-xs capitalize shrink-0"
-              >
-                {trip.status}
-              </Badge>
-            </div>
+            <Badge
+              variant={STATUS_VARIANTS[trip.status] ?? "outline"}
+              className="text-xs capitalize shrink-0"
+            >
+              {trip.status}
+            </Badge>
+          </div>
 
-            <div className="flex items-center gap-1 shrink-0">
-              <Button variant="ghost" size="sm" className="gap-1.5 text-xs" asChild>
-                <Link href={`/trips/${trip_id}/itinerary`}>
-                  <CalendarDays className="h-3.5 w-3.5" />
-                  Itinerary
-                </Link>
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="gap-1.5 text-xs"
-                onClick={() => setShowShareModal(true)}
-              >
-                <Share2 className="h-3.5 w-3.5" />
-                Share
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="gap-1.5 text-xs"
-                onClick={handleExportPdf}
-                disabled={exportingPdf}
-              >
-                <FileDown className={`h-3.5 w-3.5 ${exportingPdf ? "animate-bounce" : ""}`} />
-                {exportingPdf ? "Exporting…" : "Export PDF"}
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={handleDeleteTrip}
-                className="text-neutral-400 hover:text-error-500"
-                aria-label="Delete trip"
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
-            </div>
+          <div className="flex items-center gap-1 shrink-0">
+            <Button variant="ghost" size="sm" className="gap-1.5 text-xs" asChild>
+              <Link href={`/trips/${trip_id}/itinerary`}>
+                <CalendarDays className="h-3.5 w-3.5" />
+                Itinerary
+              </Link>
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="gap-1.5 text-xs"
+              onClick={() => setShowShareModal(true)}
+            >
+              <Share2 className="h-3.5 w-3.5" />
+              Share
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="gap-1.5 text-xs"
+              onClick={handleExportPdf}
+              disabled={exportingPdf}
+            >
+              <FileDown className={`h-3.5 w-3.5 ${exportingPdf ? "animate-bounce" : ""}`} />
+              {exportingPdf ? "Exporting…" : "Export PDF"}
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={handleDeleteTrip}
+              className="text-neutral-400 hover:text-error-500"
+              aria-label="Delete trip"
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
           </div>
         </div>
 
@@ -357,7 +356,7 @@ export default function TripDetailPage({
           />
         )}
 
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Map */}
           <div className="lg:col-span-2 rounded-xl overflow-hidden border border-neutral-200 bg-white" style={{ height: 420 }}>
             <TripMap
@@ -515,7 +514,7 @@ export default function TripDetailPage({
             )}
           </div>
         </div>
-      </div>
+      </PageShell>
     </GoogleMapsProvider>
   );
 }

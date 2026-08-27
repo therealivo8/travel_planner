@@ -20,10 +20,7 @@ import {
 import { useAuth } from "@/context/AuthContext";
 import { cn } from "@/lib/utils";
 
-const navLinks = [
-  { href: "/trips", label: "Trips" },
-  { href: "/explore", label: "Explore" },
-];
+const navLinks = [{ href: "/trips", label: "Trips" }];
 
 function userInitials(user: { email: string; display_name: string | null }) {
   if (user.display_name) return user.display_name.slice(0, 2).toUpperCase();
@@ -38,8 +35,8 @@ export function TopNav({ className }: TopNavProps) {
   const { user, logout } = useAuth();
   const router = useRouter();
 
-  function handleLogout() {
-    logout();
+  async function handleLogout() {
+    await logout();
     router.push("/login");
   }
 

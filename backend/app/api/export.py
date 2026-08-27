@@ -1,3 +1,4 @@
+import html
 import uuid
 from typing import Annotated
 
@@ -14,6 +15,11 @@ from app.models.trip import ItineraryDay, Trip
 router = APIRouter(tags=["export"])
 
 DB = Annotated[AsyncSession, Depends(get_db)]
+
+
+def _e(value: object) -> str:
+    """Escape a value for safe interpolation into the export HTML."""
+    return html.escape(str(value or ""))
 
 
 def _format_duration(seconds: int | None) -> str:
@@ -48,7 +54,7 @@ def _build_html(trip: Trip) -> str:
     for day in sorted_days:
         day_wps = sorted(day_wp_map[day.id], key=lambda w: w.position)
         date_str = day.date.strftime("%B %d, %Y") if day.date else f"Day {day.day_number}"
-        title_str = day.title or f"Day {day.day_number}"
+        title_str = _e(day.title) or f"Day {day.day_number}"
 
         wp_rows = ""
         for wp in day_wps:
@@ -56,7 +62,7 @@ def _build_html(trip: Trip) -> str:
             leg_time = _format_duration(wp.drive_seconds_from_prev)
             wp_rows += f"""
             <tr>
-              <td class="wp-name">{wp.label or wp.address}</td>
+              <td class="wp-name">{_e(wp.label or wp.address)}</td>
               <td class="wp-arrival">{arrival}</td>
               <td class="wp-drive">+{leg_time}</td>
             </tr>"""
@@ -71,7 +77,7 @@ def _build_html(trip: Trip) -> str:
             <span class="day-title">{title_str}</span>
             <span class="day-date">{date_str}</span>
           </div>
-          {f'<p class="day-notes">{day.notes}</p>' if day.notes else ""}
+          {f'<p class="day-notes">{_e(day.notes)}</p>' if day.notes else ""}
           <table class="wp-table">
             <thead>
               <tr><th>Stop</th><th>Arrival</th><th>Drive from prev</th></tr>
@@ -84,7 +90,7 @@ def _build_html(trip: Trip) -> str:
     unscheduled_section = ""
     if unscheduled:
         rows = "".join(
-            f'<li>{wp.label or wp.address}</li>' for wp in unscheduled
+            f'<li>{_e(wp.label or wp.address)}</li>' for wp in unscheduled
         )
         unscheduled_section = f"""
         <div class="day-section">
@@ -123,11 +129,11 @@ def _build_html(trip: Trip) -> str:
 </style>
 </head>
 <body>
-  <h1>{trip.title}</h1>
+  <h1>{_e(trip.title)}</h1>
   <p class="meta">{start_date_str} &bull; {trip.mode.replace("_", " ").title()} trip</p>
   <p class="route-info">
-    <strong>From:</strong> {trip.start_address}
-    {f"<br><strong>To:</strong> {trip.end_address}" if trip.end_address else ""}
+    <strong>From:</strong> {_e(trip.start_address)}
+    {f"<br><strong>To:</strong> {_e(trip.end_address)}" if trip.end_address else ""}
   </p>
   <div class="stats">
     <div class="stat-item">
@@ -180,8 +186,12 @@ async def export_pdf(
     if trip is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Trip not found")
 
-    html = _build_html(trip)
-    pdf_bytes = weasyprint.HTML(string=html).write_pdf()
+    document_html = _build_html(trip)
+    # Defense in depth alongside _e(): even if an unescaped field slips through in the
+    # future, WeasyPrint can't be made to fetch an attacker-controlled URL (SSRF) — only
+    # inline data: URIs resolve, everything else fails to load instead of erroring out.
+    url_fetcher = weasyprint.URLFetcher(allowed_protocols=["data"])
+    pdf_bytes = weasyprint.HTML(string=document_html, url_fetcher=url_fetcher).write_pdf()
 
     safe_title = "".join(c if c.isalnum() or c in " -_" else "_" for c in trip.title)[:60]
     filename = f"{safe_title}.pdf"

@@ -23,6 +23,8 @@ Both modes go beyond simple point-A-to-point-B navigation: point-to-point trips 
 | 5 | [phase-5-trip-management.md](./phase-5-trip-management.md) | Phase 4 | Itinerary builder, sharing, PDF export, dashboard |
 | 6 | [phase-6-llm-integration.md](./phase-6-llm-integration.md) | Phase 5 | Claude AI — natural language planning, suggestions, chat |
 | 7 | [phase-7-corridor-and-itinerary-optimization.md](./phase-7-corridor-and-itinerary-optimization.md) | Phase 5 | Corridor stop discovery (point-to-point), radius itinerary optimization |
+| 8 | [phase-8-hardening-and-bugfixes.md](./phase-8-hardening-and-bugfixes.md) | Phase 7 | Sign-out, token refresh, rate-limit fix, PDF injection fix, prod secret-key guard, error-detail leakage |
+| 9 | [phase-9-suggest-stops-and-navigation.md](./phase-9-suggest-stops-and-navigation.md) | Phase 7, Phase 8 | AI suggest-stops (Phase 6 slice), global nav + sign-out UI, itinerary board persistence fixes |
 
 ---
 
@@ -37,6 +39,8 @@ Phase 1 (Foundation) ─────┘
                             └── Phase 5 (Trip Management)
                                     ├── Phase 6 (LLM Integration)
                                     └── Phase 7 (Corridor Stops & Itinerary Optimization)
+                                            └── Phase 8 (Hardening & Bug Fixes)
+                                                    └── Phase 9 (Suggest-Stops, Nav & Itinerary Completion)
 ```
 
 Each phase is designed to be independently workable in a single agent session with a focused context window.

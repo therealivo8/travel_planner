@@ -1,7 +1,7 @@
 import uuid
 from typing import Annotated
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError
 from sqlalchemy import select
@@ -15,6 +15,7 @@ bearer = HTTPBearer(auto_error=False)
 
 
 async def get_current_user(
+    request: Request,
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> User:
@@ -34,6 +35,9 @@ async def get_current_user(
     user = result.scalar_one_or_none()
     if user is None:
         raise exc
+    # Read by app.core.limiter's key function so rate limits are keyed per-user
+    # instead of per-IP for authenticated requests.
+    request.state.user = user
     return user
 
 

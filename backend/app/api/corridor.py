@@ -3,13 +3,12 @@ import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
-from slowapi import Limiter
-from slowapi.util import get_remote_address
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.deps import CurrentUser
+from app.core.limiter import limiter
 from app.db.session import get_db
 from app.models.trip import CorridorSuggestion, Trip, Waypoint
 from app.schemas.trip import (
@@ -25,7 +24,6 @@ from app.services import routes as route_svc
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["corridor"])
-limiter = Limiter(key_func=get_remote_address)
 
 DB = Annotated[AsyncSession, Depends(get_db)]
 
@@ -85,7 +83,7 @@ async def discover_corridor(
         logger.exception("Corridor discovery failed")
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"Corridor discovery failed: {exc}",
+            detail="Corridor discovery failed. Please try again.",
         ) from exc
 
     await db.execute(delete(CorridorSuggestion).where(CorridorSuggestion.trip_id == trip_id))

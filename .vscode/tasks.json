@@ -1,0 +1,30 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Start Road Trip Planner (all)",
+      "type": "shell",
+      "command": "${workspaceFolder}/dev.sh",
+      "isBackground": true,
+      "problemMatcher": {
+        "pattern": {
+          "regexp": "____never_match____"
+        },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": "Starting PostgreSQL",
+          "endsPattern": "Press Ctrl\\+C to stop"
+        }
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      },
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      }
+    }
+  ]
+}

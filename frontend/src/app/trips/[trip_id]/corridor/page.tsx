@@ -17,6 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { GoogleMapsProvider, TripMap } from "@/components/routing";
 import { SuggestionCard } from "@/components/radius";
 import { cn } from "@/lib/utils";
+import { PageShell } from "@/components/layout/PageShell";
 import type { Trip, CorridorSuggestion, SuggestionCategory } from "@/types";
 
 const CATEGORIES: { value: SuggestionCategory | "all"; label: string }[] = [
@@ -153,14 +154,12 @@ export default function CorridorPage({
 
   if (initialLoading || !trip) {
     return (
-      <div className="min-h-screen bg-neutral-50">
-        <div className="bg-white border-b border-neutral-200">
-          <div className="max-w-6xl mx-auto px-4 sm:px-6 py-4 flex items-center gap-3">
-            <Skeleton className="h-9 w-9 rounded-lg" />
-            <Skeleton className="h-6 w-56" />
-          </div>
+      <PageShell fullWidth className="max-w-6xl mx-auto w-full">
+        <div className="flex items-center gap-3 mb-6">
+          <Skeleton className="h-9 w-9 rounded-lg" />
+          <Skeleton className="h-6 w-56" />
         </div>
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2">
             <Skeleton className="h-[480px] w-full rounded-xl" />
           </div>
@@ -170,18 +169,20 @@ export default function CorridorPage({
             ))}
           </div>
         </div>
-      </div>
+      </PageShell>
     );
   }
 
   if (!trip.route_polyline) {
     return (
-      <div className="min-h-screen bg-neutral-50 flex flex-col items-center justify-center gap-4 px-4 text-center">
-        <p className="text-sm text-neutral-600">{error}</p>
-        <Button asChild>
-          <Link href={`/trips/${trip_id}`}>Back to trip</Link>
-        </Button>
-      </div>
+      <PageShell fullBleed>
+        <div className="flex-1 flex flex-col items-center justify-center gap-4 px-4 text-center">
+          <p className="text-sm text-neutral-600">{error}</p>
+          <Button asChild>
+            <Link href={`/trips/${trip_id}`}>Back to trip</Link>
+          </Button>
+        </div>
+      </PageShell>
     );
   }
 
@@ -287,8 +288,8 @@ export default function CorridorPage({
 
   return (
     <GoogleMapsProvider>
-      <div className="min-h-screen bg-neutral-50 flex flex-col">
-        {/* Header */}
+      <PageShell fullBleed className="overflow-hidden">
+        {/* Sub-header */}
         <div className="bg-white border-b border-neutral-200 shrink-0">
           <div className="max-w-6xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between gap-3">
             <div className="flex items-center gap-3 min-w-0">
@@ -333,9 +334,9 @@ export default function CorridorPage({
         </div>
 
         {/* Body */}
-        <div className="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 py-6">
+        <div className="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 py-6 flex flex-col min-h-0">
           {/* Desktop: side-by-side */}
-          <div className="hidden sm:grid sm:grid-cols-3 gap-6 h-[calc(100vh-140px)]">
+          <div className="hidden sm:grid sm:grid-cols-3 gap-6 flex-1 min-h-0">
             {/* Map */}
             <div className="sm:col-span-2 rounded-xl overflow-hidden border border-neutral-200 bg-white">
               <TripMap
@@ -376,9 +377,9 @@ export default function CorridorPage({
           </div>
 
           {/* Mobile: single view with sheet */}
-          <div className="sm:hidden">
+          <div className="sm:hidden flex-1 min-h-0 flex flex-col">
             {mobileView === "map" ? (
-              <div className="rounded-xl overflow-hidden border border-neutral-200 bg-white" style={{ height: "calc(100vh - 200px)" }}>
+              <div className="flex-1 min-h-0 rounded-xl overflow-hidden border border-neutral-200 bg-white">
                 <TripMap
                   startLat={trip.start_lat}
                   startLng={trip.start_lng}
@@ -410,7 +411,7 @@ export default function CorridorPage({
                 />
               </div>
             ) : (
-              <div className="flex flex-col gap-3" style={{ minHeight: "calc(100vh - 200px)" }}>
+              <div className="flex-1 min-h-0 flex flex-col gap-3">
                 {SidebarContent}
               </div>
             )}
@@ -431,7 +432,7 @@ export default function CorridorPage({
             )}
           </div>
         </div>
-      </div>
+      </PageShell>
     </GoogleMapsProvider>
   );
 }

@@ -67,6 +67,7 @@ export interface ItineraryWaypoint {
   label: string | null;
   address: string;
   position: number;
+  day_position: number | null;
   scheduled_arrival_time: string | null;
   drive_seconds_from_prev: number | null;
 }

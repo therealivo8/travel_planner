@@ -1,8 +1,7 @@
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
-from slowapi.util import get_remote_address
 
 from app.api.auth import router as auth_router
 from app.api.corridor import router as corridor_router
@@ -15,16 +14,7 @@ from app.api.sharing import router as sharing_router
 from app.api.trips import router as trips_router
 from app.api.waypoints import router as waypoints_router
 from app.config import settings
-
-
-def _get_user_or_ip(request: Request) -> str:
-    user = getattr(request.state, "user", None)
-    if user and hasattr(user, "id"):
-        return str(user.id)
-    return get_remote_address(request)
-
-
-limiter = Limiter(key_func=_get_user_or_ip)
+from app.core.limiter import limiter
 
 app = FastAPI(
     title="Road Trip Planner API",

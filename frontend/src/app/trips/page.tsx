@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TripCard } from "@/components/trips";
 import { TripActionsMenu } from "@/components/trips/TripActionsMenu";
+import { PageShell } from "@/components/layout/PageShell";
 import type { PaginatedTrips, TripListItem, TripStatus } from "@/types";
 
 type SortKey = "created_at" | "updated_at" | "start_date";
@@ -97,7 +98,7 @@ export default function TripsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-neutral-50">
+    <PageShell fullBleed>
       {/* Header */}
       <div className="bg-white border-b border-neutral-200">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6 flex items-center justify-between">
@@ -220,6 +221,6 @@ export default function TripsPage() {
           </div>
         )}
       </div>
-    </div>
+    </PageShell>
   );
 }

@@ -2,20 +2,18 @@ import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
-from slowapi import Limiter
-from slowapi.util import get_remote_address
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.deps import CurrentUser
+from app.core.limiter import limiter
 from app.db.session import get_db
 from app.models.trip import Trip
 from app.schemas.trip import GeocodeResult, RouteOut, TripOut
 from app.services import routes as route_svc
 
 router = APIRouter(tags=["routing"])
-limiter = Limiter(key_func=get_remote_address)
 
 DB = Annotated[AsyncSession, Depends(get_db)]
 

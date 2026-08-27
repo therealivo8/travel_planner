@@ -215,12 +215,6 @@ export default function HomePage() {
               >
                 GitHub
               </a>
-              <a href="/privacy" className="hover:text-neutral-900 transition-colors">
-                Privacy
-              </a>
-              <a href="/terms" className="hover:text-neutral-900 transition-colors">
-                Terms
-              </a>
             </nav>
 
             <p className="text-xs text-neutral-400">Built with Claude</p>

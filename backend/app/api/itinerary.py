@@ -1,10 +1,10 @@
 import uuid
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
-from typing import Annotated
 
 from app.core.deps import CurrentUser
 from app.db.session import get_db
@@ -16,6 +16,7 @@ from app.schemas.trip import (
     ItineraryDayUpdate,
     ItineraryOut,
     ItineraryWaypointOut,
+    SetArrivalTimeRequest,
 )
 
 router = APIRouter(prefix="/trips/{trip_id}/itinerary", tags=["itinerary"])
@@ -57,13 +58,18 @@ def _waypoint_to_itinerary_out(wp: Waypoint) -> ItineraryWaypointOut:
         label=wp.label,
         address=wp.address,
         position=wp.position,
+        day_position=wp.day_position,
         scheduled_arrival_time=wp.scheduled_arrival_time,
         drive_seconds_from_prev=wp.drive_seconds_from_prev,
     )
 
 
 def _day_to_out(day: ItineraryDay) -> ItineraryDayOut:
-    sorted_wps = sorted(day.waypoints, key=lambda w: w.position)
+    # day_position is only set once a waypoint has been explicitly ordered within
+    # this day; fall back to the trip-wide position for waypoints that haven't.
+    sorted_wps = sorted(
+        day.waypoints, key=lambda w: (w.day_position is None, w.day_position, w.position)
+    )
     return ItineraryDayOut(
         id=day.id,
         trip_id=day.trip_id,
@@ -180,7 +186,7 @@ async def delete_day(
     await db.execute(
         update(Waypoint)
         .where(Waypoint.itinerary_day_id == day_id)
-        .values(itinerary_day_id=None, scheduled_arrival_time=None)
+        .values(itinerary_day_id=None, scheduled_arrival_time=None, day_position=None)
     )
 
     await db.delete(day)
@@ -216,14 +222,25 @@ async def assign_waypoints(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Day not found")
 
     if body.waypoint_ids:
+        values: dict[str, object] = {"itinerary_day_id": day_id}
+        # Only touch scheduled_arrival_time if the caller explicitly set it —
+        # a reassign/reorder call that omits it must not wipe an existing time.
+        if "scheduled_arrival_time" in body.model_fields_set:
+            values["scheduled_arrival_time"] = body.scheduled_arrival_time
         await db.execute(
             update(Waypoint)
             .where(Waypoint.id.in_(body.waypoint_ids), Waypoint.trip_id == trip_id)
-            .values(
-                itinerary_day_id=day_id,
-                scheduled_arrival_time=body.scheduled_arrival_time,
-            )
+            .values(**values)
         )
+        await db.commit()
+
+    if body.ordered_waypoint_ids:
+        for pos, wp_id in enumerate(body.ordered_waypoint_ids):
+            await db.execute(
+                update(Waypoint)
+                .where(Waypoint.id == wp_id, Waypoint.trip_id == trip_id)
+                .values(day_position=pos)
+            )
         await db.commit()
 
     result2 = await db.execute(
@@ -232,3 +249,61 @@ async def assign_waypoints(
         .options(selectinload(ItineraryDay.waypoints))
     )
     return _day_to_out(result2.scalar_one())
+
+
+@router.delete("/days/{day_id}/waypoints/{waypoint_id}", response_model=ItineraryDayOut)
+async def unassign_waypoint(
+    trip_id: uuid.UUID,
+    day_id: uuid.UUID,
+    waypoint_id: uuid.UUID,
+    current_user: CurrentUser,
+    db: DB,
+) -> ItineraryDayOut:
+    await _get_owned_trip(trip_id, current_user.id, db)
+
+    result = await db.execute(
+        select(ItineraryDay).where(ItineraryDay.id == day_id, ItineraryDay.trip_id == trip_id)
+    )
+    if result.scalar_one_or_none() is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Day not found")
+
+    await db.execute(
+        update(Waypoint)
+        .where(
+            Waypoint.id == waypoint_id,
+            Waypoint.trip_id == trip_id,
+            Waypoint.itinerary_day_id == day_id,
+        )
+        .values(itinerary_day_id=None, scheduled_arrival_time=None, day_position=None)
+    )
+    await db.commit()
+
+    result2 = await db.execute(
+        select(ItineraryDay)
+        .where(ItineraryDay.id == day_id)
+        .options(selectinload(ItineraryDay.waypoints))
+    )
+    return _day_to_out(result2.scalar_one())
+
+
+@router.patch("/waypoints/{waypoint_id}/arrival-time", response_model=ItineraryWaypointOut)
+async def set_arrival_time(
+    trip_id: uuid.UUID,
+    waypoint_id: uuid.UUID,
+    body: SetArrivalTimeRequest,
+    current_user: CurrentUser,
+    db: DB,
+) -> ItineraryWaypointOut:
+    await _get_owned_trip(trip_id, current_user.id, db)
+
+    result = await db.execute(
+        select(Waypoint).where(Waypoint.id == waypoint_id, Waypoint.trip_id == trip_id)
+    )
+    waypoint = result.scalar_one_or_none()
+    if waypoint is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Waypoint not found")
+
+    waypoint.scheduled_arrival_time = body.scheduled_arrival_time
+    await db.commit()
+    await db.refresh(waypoint)
+    return _waypoint_to_itinerary_out(waypoint)

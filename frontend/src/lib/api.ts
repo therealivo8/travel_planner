@@ -15,14 +15,36 @@ export function getApiToken(): string | null {
   return _accessToken;
 }
 
-async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
+// Deduplicates concurrent 401s into a single /auth/refresh call.
+let _refreshPromise: Promise<string | null> | null = null;
+
+function refreshAccessToken(): Promise<string | null> {
+  if (!_refreshPromise) {
+    _refreshPromise = fetch(`${API_URL}/auth/refresh`, {
+      method: "POST",
+      credentials: "include",
+    })
+      .then(async (res) => {
+        if (!res.ok) return null;
+        const data = (await res.json()) as { access_token: string };
+        return data.access_token;
+      })
+      .catch(() => null)
+      .finally(() => {
+        _refreshPromise = null;
+      });
+  }
+  return _refreshPromise;
+}
+
+async function doFetch(path: string, options: RequestOptions): Promise<Response> {
   const { body, headers, ...rest } = options;
 
   const authHeader: Record<string, string> = _accessToken
     ? { Authorization: `Bearer ${_accessToken}` }
     : {};
 
-  const res = await fetch(`${API_URL}${path}`, {
+  return fetch(`${API_URL}${path}`, {
     credentials: "include",
     headers: {
       "Content-Type": "application/json",
@@ -32,6 +54,24 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
     body: body !== undefined ? JSON.stringify(body) : undefined,
     ...rest,
   });
+}
+
+async function request<T>(path: string, options: RequestOptions = {}, isRetry = false): Promise<T> {
+  const res = await doFetch(path, options);
+
+  // Skip /auth/* so a failing login/refresh call can't trigger another refresh attempt.
+  if (res.status === 401 && !isRetry && !path.startsWith("/auth/")) {
+    const newToken = await refreshAccessToken();
+    if (newToken) {
+      setApiToken(newToken);
+      return request<T>(path, options, true);
+    }
+    setApiToken(null);
+    if (typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
+      window.location.href = "/login";
+    }
+    throw new SessionExpiredError();
+  }
 
   if (res.status === 429) {
     const retryAfter = res.headers.get("Retry-After");
@@ -51,6 +91,14 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   if (res.status === 204) return undefined as T;
 
   return res.json() as Promise<T>;
+}
+
+/** Thrown when a request 401s and the subsequent refresh attempt also fails. */
+export class SessionExpiredError extends Error {
+  constructor() {
+    super("Session expired. Please log in again.");
+    this.name = "SessionExpiredError";
+  }
 }
 
 export const api = {

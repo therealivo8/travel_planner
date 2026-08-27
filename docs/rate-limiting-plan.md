@@ -43,9 +43,9 @@ In-process limiting is sufficient for a single-server deployment. If the app sca
 
 **`slowapi>=0.1.9`** — a FastAPI/Starlette wrapper around the `limits` library. Installed in `backend/pyproject.toml`. No extra infrastructure required; limits are stored in memory by default.
 
-### `backend/app/main.py`
+### `backend/app/core/limiter.py`
 
-A `_get_user_or_ip` key function keys on authenticated user ID when available, falling back to IP address for unauthenticated requests. The `Limiter` and 429 exception handler are registered on the app:
+A single shared `Limiter` instance lives here, keyed by a `_get_user_or_ip` function that uses the authenticated user ID when available, falling back to IP address for unauthenticated requests:
 
 ```python
 def _get_user_or_ip(request: Request) -> str:
@@ -55,9 +55,20 @@ def _get_user_or_ip(request: Request) -> str:
     return get_remote_address(request)
 
 limiter = Limiter(key_func=_get_user_or_ip)
+```
+
+`request.state.user` is populated by `get_current_user` (`backend/app/core/deps.py`) on every authenticated request — this is what makes user-based keying actually work; the key function has nothing to read from otherwise.
+
+`backend/app/main.py` imports this single instance for app-wide registration:
+
+```python
+from app.core.limiter import limiter
+
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 ```
+
+Every router that applies a rate limit (`routing.py`, `radius.py`, `corridor.py`) imports this same `limiter` from `app.core.limiter` — there must be exactly one `Limiter` instance in the app. An earlier version of this code had each router construct its own `Limiter(key_func=get_remote_address)`, which silently shadowed the app-level limiter and made every limit IP-based regardless of auth status; that has been fixed.
 
 ### `backend/app/api/radius.py` and `backend/app/api/routing.py`
 

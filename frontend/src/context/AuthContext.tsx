@@ -25,7 +25,7 @@ interface AuthState {
 interface AuthContextValue extends AuthState {
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string, displayName?: string) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
   setToken: (token: string) => void;
 }
 
@@ -140,7 +140,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [fetchMe]
   );
 
-  const logout = useCallback(() => {
+  const logout = useCallback(async () => {
+    try {
+      await fetch(`${API_URL}/auth/logout`, { method: "POST", credentials: "include" });
+    } catch {
+      /* clear client state regardless of network failure */
+    }
     loggedInRef.current = false;
     tokenRef.current = null;
     setApiToken(null);

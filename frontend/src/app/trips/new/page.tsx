@@ -14,6 +14,7 @@ import { cn } from "@/lib/utils";
 import { AddressAutocomplete, GoogleMapsProvider } from "@/components/routing";
 import type { AddressSelection } from "@/components/routing";
 import type { Trip } from "@/types";
+import { PageShell } from "@/components/layout/PageShell";
 
 type Mode = "point_to_point" | "radius";
 
@@ -111,9 +112,9 @@ export default function NewTripPage() {
 
   return (
     <GoogleMapsProvider>
-      <div className="min-h-screen bg-neutral-50">
-        <div className="bg-white border-b border-neutral-200">
-          <div className="max-w-2xl mx-auto px-4 sm:px-6 py-4 flex items-center gap-3">
+      <PageShell fullBleed>
+        <div className="max-w-2xl mx-auto px-4 sm:px-6 py-8 w-full">
+          <div className="flex items-center gap-3 mb-6">
             <Button variant="ghost" size="icon" asChild>
               <Link href="/trips">
                 <ArrowLeft className="h-4 w-4" />
@@ -121,9 +122,7 @@ export default function NewTripPage() {
             </Button>
             <h1 className="text-xl font-semibold text-neutral-900">New Trip</h1>
           </div>
-        </div>
 
-        <div className="max-w-2xl mx-auto px-4 sm:px-6 py-8">
           <form onSubmit={handleSubmit} className="flex flex-col gap-6" noValidate>
             {/* Mode selector */}
             <div className="bg-white rounded-xl border border-neutral-200 p-5">
@@ -255,7 +254,7 @@ export default function NewTripPage() {
             </Button>
           </form>
         </div>
-      </div>
+      </PageShell>
     </GoogleMapsProvider>
   );
 }
