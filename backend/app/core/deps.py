@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import decode_token
+from app.core.security_log import log_unauthorized
 from app.db.session import get_db
 from app.models.user import User
 
@@ -25,15 +26,18 @@ async def get_current_user(
         headers={"WWW-Authenticate": "Bearer"},
     )
     if not credentials:
+        log_unauthorized(request)
         raise exc
     try:
         user_id = decode_token(credentials.credentials, "access")
     except JWTError:
+        log_unauthorized(request)
         raise exc
 
     result = await db.execute(select(User).where(User.id == uuid.UUID(user_id)))
     user = result.scalar_one_or_none()
     if user is None:
+        log_unauthorized(request)
         raise exc
     # Read by app.core.limiter's key function so rate limits are keyed per-user
     # instead of per-IP for authenticated requests.

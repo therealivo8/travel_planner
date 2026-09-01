@@ -2,15 +2,16 @@ import html
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.deps import CurrentUser
+from app.core.limiter import limiter
 from app.db.session import get_db
-from app.models.trip import ItineraryDay, Trip
+from app.models.trip import ItineraryDay, Trip, Waypoint
 
 router = APIRouter(tags=["export"])
 
@@ -44,7 +45,7 @@ def _build_html(trip: Trip) -> str:
     sorted_days = sorted(trip.itinerary_days, key=lambda d: d.day_number)
 
     unscheduled = [w for w in sorted_wps if w.itinerary_day_id is None]
-    day_wp_map: dict[uuid.UUID, list] = {d.id: [] for d in sorted_days}
+    day_wp_map: dict[uuid.UUID, list[Waypoint]] = {d.id: [] for d in sorted_days}
     for wp in sorted_wps:
         if wp.itinerary_day_id and wp.itinerary_day_id in day_wp_map:
             day_wp_map[wp.itinerary_day_id].append(wp)
@@ -161,13 +162,15 @@ def _build_html(trip: Trip) -> str:
 
 
 @router.get("/trips/{trip_id}/export/pdf")
+@limiter.limit("20/hour")
 async def export_pdf(
+    request: Request,
     trip_id: uuid.UUID,
     current_user: CurrentUser,
     db: DB,
 ) -> Response:
     try:
-        import weasyprint  # type: ignore[import-untyped]
+        import weasyprint
     except ImportError:
         raise HTTPException(
             status_code=status.HTTP_501_NOT_IMPLEMENTED,

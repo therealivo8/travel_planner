@@ -25,6 +25,7 @@ Both modes go beyond simple point-A-to-point-B navigation: point-to-point trips 
 | 7 | [phase-7-corridor-and-itinerary-optimization.md](./phase-7-corridor-and-itinerary-optimization.md) | Phase 5 | Corridor stop discovery (point-to-point), radius itinerary optimization |
 | 8 | [phase-8-hardening-and-bugfixes.md](./phase-8-hardening-and-bugfixes.md) | Phase 7 | Sign-out, token refresh, rate-limit fix, PDF injection fix, prod secret-key guard, error-detail leakage |
 | 9 | [phase-9-suggest-stops-and-navigation.md](./phase-9-suggest-stops-and-navigation.md) | Phase 7, Phase 8 | AI suggest-stops (Phase 6 slice), global nav + sign-out UI, itinerary board persistence fixes |
+| 10 | [phase-10-security-hardening-round-2.md](./phase-10-security-hardening-round-2.md) | Phase 9 | Rate-limit auth/export endpoints, Sentry + structured security logging + alerting, CI lockfile pinning, `next` upgrade, input bounds |
 
 ---
 
@@ -41,6 +42,7 @@ Phase 1 (Foundation) ─────┘
                                     └── Phase 7 (Corridor Stops & Itinerary Optimization)
                                             └── Phase 8 (Hardening & Bug Fixes)
                                                     └── Phase 9 (Suggest-Stops, Nav & Itinerary Completion)
+                                                            └── Phase 10 (Security Hardening, Round 2)
 ```
 
 Each phase is designed to be independently workable in a single agent session with a focused context window.

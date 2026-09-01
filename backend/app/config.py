@@ -13,6 +13,11 @@ class Settings(BaseSettings):
     algorithm: str = "HS256"
     maps_api_key: str = ""
     ors_api_key: str = ""
+    # Sentry error-tracking DSN. Empty (the default) disables Sentry entirely —
+    # sentry_sdk.init() is a no-op without a DSN, so local dev needs no Sentry
+    # account. Sentry DSNs are designed to be write-only and rate-limited by
+    # project, so this is not treated as a secret the way SECRET_KEY is.
+    sentry_dsn: str = ""
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 

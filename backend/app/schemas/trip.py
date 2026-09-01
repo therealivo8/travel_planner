@@ -4,25 +4,39 @@ from datetime import date as date_type
 from datetime import datetime, time
 from typing import Any, Literal  # noqa: F401
 
-from pydantic import BaseModel, computed_field, field_validator, model_validator
+from pydantic import BaseModel, Field, computed_field, field_validator, model_validator
+
+# Shared bound for list-of-ID request fields (suggestion_ids, ordered_ids,
+# waypoint_ids, etc.). These endpoints are already hourly rate-limited and
+# every ID must already exist in the caller's own trip (verified by a
+# len(fetched) == len(requested) check at each call site), so an oversized
+# list isn't an authorization bypass — it's still worth capping to keep a
+# single request from forcing an unnecessarily large IN(...) query or
+# downstream route recalculation over an unrealistic number of stops.
+MAX_ID_LIST_LENGTH = 100
+
+# Mirrors the DB column bound so an out-of-range value is rejected with a
+# clean 422 at the API layer instead of surfacing as a DB error.
+# See app/models/trip.py: Waypoint.label = String(200), ItineraryDay.title = String(200).
+MAX_SHORT_TEXT_LENGTH = 200
 
 
 class WaypointCreate(BaseModel):
-    address: str
+    address: str = Field(max_length=2000)
     lat: float
     lng: float
-    label: str | None = None
-    stop_duration_minutes: int | None = None
-    notes: str | None = None
+    label: str | None = Field(default=None, max_length=MAX_SHORT_TEXT_LENGTH)
+    stop_duration_minutes: int | None = Field(default=None, ge=1)
+    notes: str | None = Field(default=None, max_length=2000)
 
 
 class WaypointUpdate(BaseModel):
-    address: str | None = None
+    address: str | None = Field(default=None, max_length=2000)
     lat: float | None = None
     lng: float | None = None
-    label: str | None = None
-    stop_duration_minutes: int | None = None
-    notes: str | None = None
+    label: str | None = Field(default=None, max_length=MAX_SHORT_TEXT_LENGTH)
+    stop_duration_minutes: int | None = Field(default=None, ge=1)
+    notes: str | None = Field(default=None, max_length=2000)
 
 
 class WaypointOut(BaseModel):
@@ -46,18 +60,18 @@ class WaypointOut(BaseModel):
 
 
 class TripCreate(BaseModel):
-    title: str
+    title: str = Field(max_length=MAX_SHORT_TEXT_LENGTH)
     mode: Literal["point_to_point", "radius"]
-    start_address: str
+    start_address: str = Field(max_length=2000)
     start_lat: float
     start_lng: float
     # point_to_point fields
-    end_address: str | None = None
+    end_address: str | None = Field(default=None, max_length=2000)
     end_lat: float | None = None
     end_lng: float | None = None
     # radius fields
-    max_drive_minutes: int | None = None
-    notes: str | None = None
+    max_drive_minutes: int | None = Field(default=None, ge=1)
+    notes: str | None = Field(default=None, max_length=2000)
 
     @model_validator(mode="after")
     def validate_mode_fields(self) -> "TripCreate":
@@ -71,18 +85,18 @@ class TripCreate(BaseModel):
 
 
 class TripUpdate(BaseModel):
-    title: str | None = None
+    title: str | None = Field(default=None, max_length=MAX_SHORT_TEXT_LENGTH)
     status: Literal["draft", "planned", "completed"] | None = None
-    start_address: str | None = None
+    start_address: str | None = Field(default=None, max_length=2000)
     start_lat: float | None = None
     start_lng: float | None = None
-    end_address: str | None = None
+    end_address: str | None = Field(default=None, max_length=2000)
     end_lat: float | None = None
     end_lng: float | None = None
-    max_drive_minutes: int | None = None
-    notes: str | None = None
+    max_drive_minutes: int | None = Field(default=None, ge=1)
+    notes: str | None = Field(default=None, max_length=2000)
     start_date: date_type | None = None
-    cover_image_url: str | None = None
+    cover_image_url: str | None = Field(default=None, max_length=2000)
 
 
 class TripOut(BaseModel):
@@ -193,12 +207,12 @@ class RadiusDiscoverResponse(BaseModel):
 
 
 class RadiusSelectRequest(BaseModel):
-    suggestion_ids: list[uuid.UUID]
+    suggestion_ids: list[uuid.UUID] = Field(max_length=MAX_ID_LIST_LENGTH)
     generate_route: bool = False
 
 
 class ReorderWaypointsRequest(BaseModel):
-    ordered_ids: list[uuid.UUID]
+    ordered_ids: list[uuid.UUID] = Field(max_length=MAX_ID_LIST_LENGTH)
 
     @field_validator("ordered_ids")
     @classmethod
@@ -241,24 +255,24 @@ class ItineraryOut(BaseModel):
 
 
 class ItineraryDayCreate(BaseModel):
-    title: str | None = None
+    title: str | None = Field(default=None, max_length=MAX_SHORT_TEXT_LENGTH)
     date: date_type | None = None
-    notes: str | None = None
+    notes: str | None = Field(default=None, max_length=2000)
 
 
 class ItineraryDayUpdate(BaseModel):
-    title: str | None = None
+    title: str | None = Field(default=None, max_length=MAX_SHORT_TEXT_LENGTH)
     date: date_type | None = None
-    notes: str | None = None
+    notes: str | None = Field(default=None, max_length=2000)
 
 
 class AssignWaypointsRequest(BaseModel):
-    waypoint_ids: list[uuid.UUID]
+    waypoint_ids: list[uuid.UUID] = Field(max_length=MAX_ID_LIST_LENGTH)
     scheduled_arrival_time: time | None = None
     # Full ordered list of waypoint IDs for the destination day, used to set/update
     # day_position for every waypoint that ends up in this day (including ones not
     # in waypoint_ids, e.g. reordering existing members without reassigning them).
-    ordered_waypoint_ids: list[uuid.UUID] | None = None
+    ordered_waypoint_ids: list[uuid.UUID] | None = Field(default=None, max_length=MAX_ID_LIST_LENGTH)
 
 
 class SetArrivalTimeRequest(BaseModel):
@@ -308,13 +322,13 @@ class CorridorDiscoverResponse(BaseModel):
 
 
 class CorridorSelectRequest(BaseModel):
-    suggestion_ids: list[uuid.UUID]
+    suggestion_ids: list[uuid.UUID] = Field(max_length=MAX_ID_LIST_LENGTH)
     insert_as_waypoints: bool = False
 
 
 class ItineraryBuildRequest(BaseModel):
-    suggestion_ids: list[uuid.UUID]
-    stop_duration_minutes: int = 30
+    suggestion_ids: list[uuid.UUID] = Field(max_length=MAX_ID_LIST_LENGTH)
+    stop_duration_minutes: int = Field(default=30, ge=1)
 
 
 class ItineraryBuildOut(BaseModel):

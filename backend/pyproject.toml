@@ -19,6 +19,7 @@ dependencies = [
     "slowapi>=0.1.9",
     "weasyprint>=69.0",
     "polyline>=2.0.2",
+    "sentry-sdk[fastapi]>=2.19.0",
 ]
 
 [dependency-groups]

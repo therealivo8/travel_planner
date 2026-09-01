@@ -55,7 +55,11 @@ jobs:
           python-version: "3.12"
 
       - name: Install dependencies
-        run: uv sync
+        # --frozen fails the build if uv.lock is out of sync with
+        # pyproject.toml, instead of silently re-resolving a possibly newer
+        # set of versions than what's committed — matches frontend-ci's
+        # --frozen-lockfile behavior above.
+        run: uv sync --frozen
 
       - name: Ruff lint
         run: uv run ruff check app/

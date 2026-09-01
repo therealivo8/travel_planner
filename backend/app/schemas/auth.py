@@ -1,13 +1,17 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, EmailStr, field_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator
 
 
 class RegisterRequest(BaseModel):
     email: EmailStr
-    password: str
-    display_name: str | None = None
+    # Upper bound isn't about UX (nobody has a 200-char password) — it's
+    # because bcrypt (app.core.security.hash_password) silently truncates
+    # at 72 bytes, and hashing an arbitrarily long client-supplied string
+    # is wasted CPU with no security benefit past that point.
+    password: str = Field(max_length=200)
+    display_name: str | None = Field(default=None, max_length=200)
 
     @field_validator("password")
     @classmethod
@@ -19,7 +23,7 @@ class RegisterRequest(BaseModel):
 
 class LoginRequest(BaseModel):
     email: EmailStr
-    password: str
+    password: str = Field(max_length=200)
 
 
 class TokenResponse(BaseModel):
