@@ -1,4 +1,4 @@
-from pydantic import model_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -20,6 +20,21 @@ class Settings(BaseSettings):
     sentry_dsn: str = ""
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
+
+    @field_validator("database_url", mode="after")
+    @classmethod
+    def _use_asyncpg_driver(cls, value: str) -> str:
+        # Railway's Postgres plugin injects DATABASE_URL as "postgresql://..." (or the
+        # legacy "postgres://..." some providers still use) — neither loads under
+        # SQLAlchemy's async engine, which requires the explicit asyncpg driver in the
+        # scheme. Normalize instead of requiring the value to be hand-edited per deploy.
+        if value.startswith("postgresql+asyncpg://"):
+            return value
+        if value.startswith("postgresql://"):
+            return "postgresql+asyncpg://" + value[len("postgresql://") :]
+        if value.startswith("postgres://"):
+            return "postgresql+asyncpg://" + value[len("postgres://") :]
+        return value
 
     @property
     def cors_origins_list(self) -> list[str]:
