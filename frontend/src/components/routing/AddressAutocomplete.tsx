@@ -44,10 +44,9 @@ export function AddressAutocomplete({
     if (!placesLib || !containerRef.current) return;
 
     // PlaceAutocompleteElement is a web component — create and mount it
-    const el = new placesLib.PlaceAutocompleteElement({
-      types: ["geocode", "establishment"],
-    });
-    el.setAttribute("placeholder", placeholder);
+    // No includedPrimaryTypes: the default returns both addresses and named
+    // places, which is what trip start/end/waypoint entry needs.
+    const el = new placesLib.PlaceAutocompleteElement({ placeholder });
 
     // Mirror our Tailwind input styles as inline style since the web component
     // renders its own shadow-DOM input; the outer wrapper handles the icon/border.
