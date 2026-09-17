@@ -26,7 +26,9 @@ def fetch_isochrone(
         raise ValueError("ORS_API_KEY is not configured")
 
     max_seconds = min(max_drive_minutes * 60, 3600)  # ORS free tier caps at 3600s
-    url = "https://api.openrouteservice.org/v2/isochrones/driving-car"
+    # api.openrouteservice.org was shut off 2026-08-24; HeiGIT moved all ORS
+    # services under api.heigit.org/openrouteservice. Same key, same payload.
+    url = "https://api.heigit.org/openrouteservice/v2/isochrones/driving-car"
     headers = {
         "Authorization": settings.ors_api_key,
         "Content-Type": "application/json",

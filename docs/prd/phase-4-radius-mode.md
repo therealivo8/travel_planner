@@ -152,7 +152,7 @@ Shows:
 ---
 
 ## Notes for the Implementing Agent
-- ORS Isochrones endpoint: `POST https://api.openrouteservice.org/v2/isochrones/driving-car` with `{"locations": [[lng, lat]], "range": [max_seconds]}`.
+- ORS Isochrones endpoint: `POST https://api.heigit.org/openrouteservice/v2/isochrones/driving-car` with `{"locations": [[lng, lat]], "range": [max_seconds]}`. (The original `api.openrouteservice.org` host was shut off 2026-08-24 when HeiGIT consolidated its APIs.)
 - Use the isochrone bounding box (`bbox`) to limit the Google Nearby Search radius, then post-filter with the Distance Matrix API.
 - Distance Matrix calls are billed per element; batch up to 25 destinations per call.
 - The `selected → waypoint` conversion should reuse the waypoint creation logic from Phase 2, ordering stops by ascending `drive_seconds_from_start`.
