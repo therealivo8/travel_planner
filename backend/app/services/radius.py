@@ -38,7 +38,10 @@ def fetch_isochrone(
         "range": [max_seconds],
         "range_type": "time",
     }
-    resp = httpx.post(url, json=body, headers=headers, timeout=30)
+    # Isochrone cost grows sharply with range: a 30-minute polygon returns in
+    # ~5s, 45 minutes in ~15s, and the 60-minute maximum in ~35s. A 30s timeout
+    # made the longest (and most useful) radius trips always fail.
+    resp = httpx.post(url, json=body, headers=headers, timeout=90)
     if not resp.is_success:
         raise ValueError(f"ORS error {resp.status_code}: {resp.text}")
     resp.raise_for_status()
