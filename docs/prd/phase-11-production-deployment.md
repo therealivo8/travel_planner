@@ -200,7 +200,12 @@ small gaps that only matter once there's a real production environment to protec
       pending migrations.
 - [ ] CORS rejects a request from an origin not in `CORS_ORIGINS`, confirmed against the live prod
       deploy (not just unit-tested).
-- [ ] An ORS 429/quota response produces a distinguishable log/Sentry event, not a generic 500.
+- [x] An ORS 429/quota response produces a distinguishable log/Sentry event, not a generic 500.
+      (Implemented 2026-09-18 in `app/core/upstream_log.py`. Note ORS returns **403** for daily
+      quota exhaustion — the same status as a bad key — so quota is inferred from 429, or from 403
+      only when `x-ratelimit-remaining` confirms nothing is left. Remaining quota is also logged at
+      INFO on every successful call, so exhaustion shows as a downward trend before it becomes an
+      outage.)
 
 ---
 

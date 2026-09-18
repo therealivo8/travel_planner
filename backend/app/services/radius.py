@@ -15,6 +15,7 @@ from typing import Any
 import httpx
 
 from app.config import settings
+from app.core import upstream_log
 from app.services import places
 
 
@@ -43,8 +44,18 @@ def fetch_isochrone(
     # made the longest (and most useful) radius trips always fail.
     resp = httpx.post(url, json=body, headers=headers, timeout=90)
     if not resp.is_success:
+        # ORS returns 403 for daily quota exhaustion — the same status as a bad
+        # key — so distinguish the two before raising, or "isochrones stopped
+        # working" is indistinguishable from "the key broke".
+        if upstream_log.is_quota_error(resp):
+            upstream_log.log_quota_exceeded("openrouteservice", resp)
+            raise ValueError(
+                f"ORS quota exceeded (HTTP {resp.status_code}) — "
+                "daily limit reached or rate limited"
+            )
         raise ValueError(f"ORS error {resp.status_code}: {resp.text}")
-    resp.raise_for_status()
+
+    upstream_log.log_quota_state("openrouteservice", resp)
     data = resp.json()
 
     # ORS returns a FeatureCollection; extract the first feature's geometry

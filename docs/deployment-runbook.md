@@ -195,9 +195,30 @@ or making discovery asynchronous.
 
 ### ORS calls fail
 
-HeiGIT shut off `api.openrouteservice.org` on 2026-08-24; the API now lives at
-`api.heigit.org/openrouteservice/v2/...`. Same key, same payloads. If ORS breaks
-again, check for another migration notice before assuming the key is bad.
+**First check whether it's quota.** The free tier is 500 requests/day. Filter
+logs for:
+
+```
+event=upstream.quota_exceeded      # confirmed quota/rate-limit rejection
+event=upstream.quota_state         # remaining quota, logged on every success
+```
+
+`quota_state` carries `quota_remaining` on every successful call, so a downward
+trend is visible before exhaustion becomes an outage. A confirmed exhaustion
+also raises a Sentry warning (if a DSN is configured).
+
+This distinction matters because **ORS returns 403 for daily quota exhaustion —
+the same status as an invalid key**. The app disambiguates using the
+`x-ratelimit-remaining` header: 429 always means rate limited, while 403 counts
+as quota only when that header confirms nothing is left. A 403 with quota
+remaining is an auth problem, not a quota one.
+
+Quota resets daily; `quota_reset` in the logs is the Unix timestamp.
+
+**If it isn't quota:** HeiGIT shut off `api.openrouteservice.org` on 2026-08-24;
+the API now lives at `api.heigit.org/openrouteservice/v2/...`. Same key, same
+payloads. If ORS breaks again, check for another migration notice before
+assuming the key is bad.
 
 Test the key directly, bypassing the app:
 

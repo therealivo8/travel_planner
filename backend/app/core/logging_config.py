@@ -5,8 +5,9 @@ Two output formats, chosen by `settings.environment`:
 - **production**: one-line JSON per log record, so a log aggregator (Railway's
   log view, or anything downstream of it) can filter/query on structured
   fields like `event`, `ip`, or `user_id` without parsing free text. This is
-  what `app.core.security_log` relies on for its `extra=` fields to be
-  queryable rather than just appended to the message string.
+  what `app.core.security_log` and `app.core.upstream_log` rely on for their
+  `extra=` fields to be queryable rather than just appended to the message
+  string.
 - **development / anything else**: plain human-readable lines, since nobody
   is running a JSON log aggregator against their own laptop.
 
