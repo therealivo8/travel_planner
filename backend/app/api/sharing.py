@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.deps import CurrentUser
+from app.core.limiter import limiter
 from app.db.session import get_db
 from app.models.trip import ItineraryDay, Trip
 from app.schemas.trip import (
@@ -75,7 +76,13 @@ async def disable_sharing(
 
 
 @router.get("/shared/{share_token}", response_model=PublicTripOut)
+# The only unauthenticated endpoint that touches the database, so it's keyed by
+# IP rather than user and is the one surface an anonymous caller can hammer.
+# Generous enough that a shared link passed around a group never trips it —
+# each viewer gets their own budget — while capping enumeration and flooding.
+@limiter.limit("60/hour")
 async def get_shared_trip(
+    request: Request,
     share_token: str,
     db: DB,
 ) -> PublicTripOut:

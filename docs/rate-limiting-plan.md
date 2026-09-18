@@ -139,16 +139,27 @@ if (res.status === 429) {
 
 ## Rate Limit Values Rationale
 
+Values below reflect what's in the code. Keep this table in sync when changing a
+decorator — it drifted once already.
+
 | Endpoint | Limit | Reasoning |
 |---|---|---|
-| `/radius/discover` | 3/hour | Each call makes ~10 external API calls. 3/hour = ~30 external calls max per user per hour, well within daily quota headroom. |
-| `/calculate-route` | 10/hour | One Directions call per request. Users rarely recalculate more than a few times per session. |
+| `/radius/discover` | 10/hour | Each call makes ~10 external API calls (ORS isochrone + paginated Places + Distance Matrix). |
+| `/corridor/discover` | 10/hour | Same shape as radius discovery. |
+| `/calculate-route` | 20/hour | One Directions call per request. Users rarely recalculate more than a few times per session. |
 | `/geocode` | 30/hour | Fallback only — autocomplete handles most lookups client-side. |
-| `/radius/select` | 20/hour | DB only, but triggers a route calculation internally when `generate_route=true`. |
+| `/radius/select` | 25/hour | DB only, but triggers a route calculation internally when `generate_route=true`. |
+| `/corridor/select` | 25/hour | As above. |
+| `/radius/build-itinerary` | 15/hour | DB plus a route calculation. |
 | `/trips/{id}/export/pdf` | 20/hour | DB only, but each call runs a WeasyPrint HTML→PDF render — CPU/memory-heavy enough to be a plausible DoS vector if uncapped. |
+| `/shared/{share_token}` | 60/hour/IP | The only unauthenticated endpoint that touches the database, so it's the one surface an anonymous caller can hammer. Keyed by IP, so each viewer of a shared link gets their own budget — generous enough that passing a link around a group never trips it, while capping enumeration and flooding. Token guessing is already futile against 256-bit `secrets.token_urlsafe(32)` tokens; this caps the database cost of trying. |
 | `/auth/login` | 10/hour/IP | Brute-force/credential-stuffing target — this is the credential check itself, so it can't be keyed by user. |
 | `/auth/register` | 5/hour/IP | Signup-abuse/spam-account target. |
 | `/auth/refresh` | 30/hour/IP | Backstop against refresh-token-guessing; kept generous since legitimate multi-device usage refreshes often. |
+
+Authenticated CRUD endpoints (trips, waypoints, itinerary days) are deliberately
+uncapped: they're cheap DB operations behind auth, and an authenticated user
+hammering their own data is a support question, not an attack.
 
 ---
 
