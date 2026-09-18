@@ -225,10 +225,13 @@ between deploys:
   documented as an appendix, not a requirement).
 
 ### Acceptance Criteria
-- [ ] `docs/deployment-runbook.md` exists and a person unfamiliar with the deploy (including
+- [x] `docs/deployment-runbook.md` exists and a person unfamiliar with the deploy (including
       future-you in six months) could follow it to deploy, roll back, and rotate a secret without
-      re-deriving any of this PRD.
-- [ ] The runbook states the current expected monthly cost figure and links to both platforms'
+      re-deriving any of this PRD. (Written 2026-09-18. Also carries a Troubleshooting section for
+      the failure modes actually hit during the first deploy — stale Railway domains, dashboard
+      env-var quoting, the ORS host migration, and the Vercel function-timeout risk — plus the
+      Sentry setup procedure, which `security-alerting.md` deliberately doesn't cover.)
+- [x] The runbook states the current expected monthly cost figure and links to both platforms'
       current usage/billing dashboards.
 
 ---

@@ -126,6 +126,9 @@ detection strategy from what this phase scoped.
    traffic (a handful of real logins, an occasional expired-tab 401) does
    **not** trigger it.
 
-See also: `docs/prd/phase-10-security-hardening-round-2.md` (Part B — the
-PRD this doc was written to satisfy), `docs/rate-limiting-plan.md` (the
-rate-limit layer that works alongside this alerting, not instead of it).
+See also: `docs/deployment-runbook.md` (how to actually create the Sentry
+projects and set the DSNs in Railway/Vercel — this doc covers what the
+integration does once it's on, not how to turn it on),
+`docs/prd/phase-10-security-hardening-round-2.md` (Part B — the PRD this doc
+was written to satisfy), `docs/rate-limiting-plan.md` (the rate-limit layer
+that works alongside this alerting, not instead of it).

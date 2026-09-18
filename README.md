@@ -189,11 +189,23 @@ Make sure your repo is on GitHub. Both platforms deploy directly from it.
 |---|---|
 | `SECRET_KEY` | A random secret: `python -c "import secrets; print(secrets.token_hex(32))"` |
 | `ENVIRONMENT` | `production` |
-| `CORS_ORIGINS` | Your Vercel URL (set this after step 3, e.g. `https://your-app.vercel.app`) |
+| `CORS_ORIGINS` | Your frontend's origin (set this after step 3, e.g. `https://your-app.vercel.app` or your custom domain). Comma-separated for multiple. |
 | `MAPS_API_KEY` | Your server-side Google Maps key (Directions, Geocoding, Places, Distance Matrix) |
 | `ORS_API_KEY` | Your OpenRouteService key (required for Radius Explorer mode) |
+| `SENTRY_DSN` | Optional — the backend Sentry project's DSN. Leave unset to disable error tracking. |
 
-6. Copy your Railway backend URL (e.g. `https://your-backend.railway.app`) — you need it for step 3.
+> **Paste values unquoted.** Railway's dashboard stores the field verbatim, unlike a
+> `.env` file where python-dotenv strips surrounding quotes. A quoted key becomes
+> part of the value and breaks auth against Google/ORS in ways that look like an
+> expired key.
+
+6. Copy your Railway backend URL from **Settings → Networking** — you need it for step 3.
+
+> **Copy the domain fresh each time.** If you ever delete and regenerate the
+> public domain, Railway issues a *new* hostname. Requests to the old one return
+> Railway's edge 404 (`x-railway-fallback: true`, `"Application not found"`),
+> which looks exactly like a platform outage. The app's own 404 is plain
+> `{"detail":"Not Found"}` with no such header.
 
 ### 3. Deploy the frontend on Vercel
 
@@ -203,20 +215,36 @@ Make sure your repo is on GitHub. Both platforms deploy directly from it.
 
 | Variable | Value |
 |---|---|
-| `NEXT_PUBLIC_API_URL` | Your Railway backend URL, e.g. `https://your-backend.railway.app` |
+| `NEXT_PUBLIC_API_URL` | Your Railway backend URL, e.g. `https://your-backend.up.railway.app` |
 | `NEXT_PUBLIC_MAPS_API_KEY` | Your client-side Google Maps key (Maps JavaScript API + Places API (New)) |
+| `NEXT_PUBLIC_SENTRY_DSN` | Optional — the *frontend* Sentry project's DSN (a different project from the backend's) |
 
 4. Deploy — Vercel builds and gives you a `your-app.vercel.app` URL
-5. Go back to Railway and update `CORS_ORIGINS` with that Vercel URL
+5. Go back to Railway and update `CORS_ORIGINS` with that URL (or your custom domain, if you've added one)
+
+If `NEXT_PUBLIC_API_URL` is missing, the build still succeeds — every API call
+just silently falls back to `http://localhost:8000` and fails in the browser.
 
 ### 4. Verify
 
 ```bash
-# Health check should return {"status": "ok", "db": "connected"}
-curl https://your-backend.railway.app/health
+# Liveness — no database dependency
+curl https://your-backend.up.railway.app/health      # {"status":"ok"}
+
+# Database connectivity
+curl https://your-backend.up.railway.app/health/db   # {"status":"ok","db":"connected"}
 ```
 
+Then exercise the golden path in a browser: register → log in → create a trip.
+A CORS misconfiguration only shows up here, as a console error — not in the
+curl checks above.
+
 Every push to `main` auto-deploys to both platforms.
+
+### 5. Optional: error tracking and backups
+
+See [docs/deployment-runbook.md](docs/deployment-runbook.md) for Sentry setup,
+backups, rollback, and secret rotation.
 
 ---
 
@@ -228,17 +256,19 @@ Every push to `main` auto-deploys to both platforms.
 |---|---|---|---|
 | `DATABASE_URL` | `postgresql+asyncpg://postgres:postgres@db:5432/travel_planner` | Yes | Async SQLAlchemy connection string |
 | `SECRET_KEY` | `changeme` | Yes | JWT signing secret — **change in production** |
-| `ENVIRONMENT` | `development` | No | Controls SQL echo logging |
-| `CORS_ORIGINS` | `http://localhost:3000` | Yes | Comma-separated allowed frontend origins |
+| `ENVIRONMENT` | `development` | No | Set to `production` in prod. Gates several behaviors: refuses to boot on the default `SECRET_KEY`, switches logs to JSON, sets `secure`/`samesite=none` on the refresh cookie, and sends HSTS. |
+| `CORS_ORIGINS` | `http://localhost:3000` | Yes | Comma-separated allowed frontend origins. Backend-only — the frontend has no CORS setting. |
 | `MAPS_API_KEY` | _(empty)_ | Yes | **Server-side** Google Maps key. Needed for Directions API, Geocoding API, Places API (Nearby Search), and Distance Matrix API. Restrict by IP in GCP, not by HTTP referrer. |
-| `ORS_API_KEY` | _(empty)_ | For radius mode | OpenRouteService API key for isochrone polygons. Free tier: 500 req/day. Get one at [openrouteservice.org](https://openrouteservice.org). |
+| `ORS_API_KEY` | _(empty)_ | For radius mode | OpenRouteService API key for isochrone polygons. Free tier: 500 req/day. Get one at [openrouteservice.org](https://openrouteservice.org) — note the API itself is now served from `api.heigit.org`. |
+| `SENTRY_DSN` | _(empty)_ | No | Backend Sentry project DSN. Empty disables Sentry entirely. See [docs/deployment-runbook.md](docs/deployment-runbook.md#setting-up-sentry). |
 
 ### Frontend — `frontend/.env.local` (copy from `frontend/.env.local.example`)
 
 | Variable | Dev default | Required | Description |
 |---|---|---|---|
-| `NEXT_PUBLIC_API_URL` | `http://localhost:8000` | Yes | Backend base URL |
+| `NEXT_PUBLIC_API_URL` | `http://localhost:8000` | Yes | Backend base URL. If unset in production the build still succeeds — requests just fall back to localhost and fail in the browser. |
 | `NEXT_PUBLIC_MAPS_API_KEY` | _(empty)_ | Yes | **Client-side** Google Maps key. Needed for Maps JavaScript API and Places API (New) for address autocomplete. Restrict by HTTP referrer in GCP. |
+| `NEXT_PUBLIC_SENTRY_DSN` | _(empty)_ | No | Frontend Sentry project DSN — a *different* project from the backend's. Safe to expose (write-only). See [docs/deployment-runbook.md](docs/deployment-runbook.md#setting-up-sentry). |
 
 ### Two separate Google Maps keys
 
@@ -332,7 +362,7 @@ travel-planner/
 │   │   │   ├── waypoints.py # CRUD + reorder for waypoints
 │   │   │   ├── routing.py  # /calculate-route, /route, /geocode
 │   │   │   ├── radius.py   # /radius/discover, /suggestions, /select, deselect
-│   │   │   └── health.py   # /health
+│   │   │   └── health.py   # /health (liveness), /health/db (DB connectivity)
 │   │   ├── models/
 │   │   │   ├── user.py     # User + RefreshToken
 │   │   │   └── trip.py     # Trip, Waypoint, RadiusSuggestion
