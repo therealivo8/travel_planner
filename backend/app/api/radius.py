@@ -77,7 +77,10 @@ async def discover(
         )
     except ValueError as exc:
         logger.exception("Discovery ValueError")
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Discovery failed. Please try again.",
+        ) from exc
     except Exception as exc:
         logger.exception("Discovery failed")
         raise HTTPException(
@@ -228,7 +231,11 @@ async def select_suggestions(
                 waypoint_coords=waypoint_coords,
             )
         except ValueError as exc:
-            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+            logger.exception("Radius route calculation failed")
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="Route calculation failed. Please try again.",
+            ) from exc
 
         trip.total_distance_meters = route_result["total_distance_meters"]
         trip.total_drive_seconds = route_result["total_drive_seconds"]
@@ -296,7 +303,11 @@ async def build_itinerary(
             budget_minutes=budget_minutes,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+        logger.exception("Itinerary planning failed")
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Itinerary planning failed. Please try again.",
+        ) from exc
 
     kept_ids = set(build_result["ordered_stop_ids"])
     dropped_ids = set(build_result["dropped_stop_ids"])
@@ -336,7 +347,11 @@ async def build_itinerary(
             waypoint_coords=waypoint_coords,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+        logger.exception("Radius route calculation failed")
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Route calculation failed. Please try again.",
+        ) from exc
 
     trip.total_distance_meters = route_result["total_distance_meters"]
     trip.total_drive_seconds = route_result["total_drive_seconds"]

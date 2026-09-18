@@ -1,3 +1,5 @@
+from typing import Any
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
@@ -53,6 +55,23 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next: Any) -> Response:
+    response: Response = await call_next(request)
+    # No CSP here: this API serves JSON, not documents, so a policy governing
+    # resource loading has nothing to act on. CSP belongs on the frontend.
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "no-referrer"
+    if settings.environment == "production":
+        # Only over HTTPS — sending HSTS on plaintext local dev would pin
+        # localhost to https:// in the browser and break it persistently.
+        response.headers["Strict-Transport-Security"] = (
+            "max-age=31536000; includeSubDomains"
+        )
+    return response
 
 app.include_router(health_router)
 app.include_router(auth_router)

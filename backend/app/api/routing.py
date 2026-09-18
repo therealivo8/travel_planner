@@ -1,3 +1,4 @@
+import logging
 import uuid
 from typing import Annotated
 
@@ -12,6 +13,8 @@ from app.db.session import get_db
 from app.models.trip import Trip
 from app.schemas.trip import GeocodeResult, RouteOut, TripOut
 from app.services import routes as route_svc
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["routing"])
 
@@ -58,7 +61,10 @@ async def calculate_route(
             waypoint_coords=waypoint_coords,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        logger.exception("Route calculation failed")
+        raise HTTPException(
+            status_code=502, detail="Route calculation failed. Please try again."
+        ) from exc
 
     trip.total_distance_meters = result["total_distance_meters"]
     trip.total_drive_seconds = result["total_drive_seconds"]
@@ -130,7 +136,10 @@ async def geocode(
     try:
         result = route_svc.geocode_address(q)
     except ValueError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+        logger.exception("Geocoding failed")
+        raise HTTPException(
+            status_code=503, detail="Geocoding is unavailable. Please try again."
+        ) from exc
     if result is None:
         return None
     return GeocodeResult(**result)
