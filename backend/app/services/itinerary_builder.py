@@ -152,3 +152,86 @@ def build_ordered_itinerary(
         "dropped_stop_ids": [index_to_id[i] for i in dropped],
         "cheapest_single_stop_minutes": cheapest_single_stop_minutes,
     }
+
+
+def _path_total_seconds(order: list[int], matrix: dict[tuple[int, int], int]) -> int:
+    """Open path: order[0] -> order[1] -> ... -> order[-1]. Unlike
+    `_route_total_seconds` there is no return leg to an origin, because a day in the
+    itinerary board ends wherever its last stop is — it is not a round trip.
+    """
+    return sum(matrix.get((order[i], order[i + 1]), 0) for i in range(len(order) - 1))
+
+
+def _two_opt_path(order: list[int], matrix: dict[tuple[int, int], int]) -> list[int]:
+    """2-opt local search over an open path, holding the first stop fixed."""
+    if len(order) < 4:
+        return order
+
+    best = order[:]
+    best_total = _path_total_seconds(best, matrix)
+    improved = True
+    iterations = 0
+
+    while improved and iterations < TWO_OPT_MAX_ITERATIONS:
+        improved = False
+        # i starts at 1: the day's first stop stays put, so the reorder is a
+        # recognisable tweak of the user's plan rather than a wholesale shuffle.
+        for i in range(1, len(best) - 1):
+            for j in range(i + 1, len(best)):
+                candidate = best[:i] + best[i : j + 1][::-1] + best[j + 1 :]
+                candidate_total = _path_total_seconds(candidate, matrix)
+                iterations += 1
+                if candidate_total < best_total:
+                    best, best_total = candidate, candidate_total
+                    improved = True
+                if iterations >= TWO_OPT_MAX_ITERATIONS:
+                    break
+            if iterations >= TWO_OPT_MAX_ITERATIONS:
+                break
+
+    return best
+
+
+def order_day_stops(stops: list[dict[str, Any]]) -> dict[str, Any]:
+    """Order one itinerary day's stops to minimize drive time along an open path.
+
+    Unlike `build_ordered_itinerary` this drops nothing and assumes no origin: a day
+    is a sequence the user already committed to, so the only job is sequencing it.
+    The first stop is held fixed as the day's starting point.
+
+    stops: [{id, lat, lng}, ...] in their current order.
+    Returns {ordered_stop_ids, total_drive_seconds, leg_seconds} where leg_seconds[k]
+    is the drive time into ordered_stop_ids[k] (leg_seconds[0] is always None).
+    """
+    if len(stops) < 2:
+        return {
+            "ordered_stop_ids": [s["id"] for s in stops],
+            "total_drive_seconds": 0,
+            "leg_seconds": [None for _ in stops],
+        }
+
+    gmaps = places.get_client()
+    points = [(s["lat"], s["lng"]) for s in stops]
+    matrix = places.distance_matrix_pairwise(gmaps, points)
+
+    indices = list(range(len(stops)))
+    # Nearest-neighbour from the existing first stop, then refine.
+    order = [0]
+    remaining = set(indices[1:])
+    while remaining:
+        current = order[-1]
+        nxt = min(remaining, key=lambda i: matrix.get((current, i), float("inf")))
+        order.append(nxt)
+        remaining.discard(nxt)
+
+    order = _two_opt_path(order, matrix)
+
+    leg_seconds: list[int | None] = [None]
+    for i in range(len(order) - 1):
+        leg_seconds.append(matrix.get((order[i], order[i + 1])))
+
+    return {
+        "ordered_stop_ids": [stops[i]["id"] for i in order],
+        "total_drive_seconds": _path_total_seconds(order, matrix),
+        "leg_seconds": leg_seconds,
+    }

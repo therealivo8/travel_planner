@@ -28,6 +28,7 @@ Both modes go beyond simple point-A-to-point-B navigation: point-to-point trips 
 | 10 | [phase-10-security-hardening-round-2.md](./phase-10-security-hardening-round-2.md) | Phase 9 | Rate-limit auth/export endpoints, Sentry + structured security logging + alerting, CI lockfile pinning, `next` upgrade, input bounds |
 | 11 | [phase-11-production-deployment.md](./phase-11-production-deployment.md) | Phase 10 | Deploy to Railway (backend + Postgres) + Vercel (frontend), secrets inventory, prod guardrails, deployment runbook |
 | 12 | [phase-12-resume-relevant-devops-practices.md](./phase-12-resume-relevant-devops-practices.md) | Phase 11 | Terraform IaC for Railway/Vercel, CI/CD pipeline that gates deploy on tests, real backend/frontend test suites, external-reader repo documentation |
+| 13 | [phase-13-itinerary-builder-completion.md](./phase-13-itinerary-builder-completion.md) | Phase 9 | Itinerary board: register day columns as drop targets (drag was inert), non-drag assign paths, day feasibility/auto-order/notes |
 
 ---
 
@@ -47,6 +48,9 @@ Phase 1 (Foundation) ─────┘
                                                             └── Phase 10 (Security Hardening, Round 2)
                                                                     └── Phase 11 (Production Deployment)
                                                                             └── Phase 12 (Resume-Relevant DevOps Practices)
+
+Phase 9 (Itinerary board) ── Phase 13 (Itinerary Builder Completion)
+    └── independent of 10-12; touches only the itinerary board
 ```
 
 Each phase is designed to be independently workable in a single agent session with a focused context window.

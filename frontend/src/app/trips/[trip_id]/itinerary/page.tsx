@@ -3,7 +3,17 @@
 import { use, useCallback, useEffect, useRef, useState, type HTMLAttributes } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Plus, Trash2, GripVertical, CalendarDays } from "lucide-react";
+import {
+  ArrowLeft,
+  Plus,
+  Trash2,
+  GripVertical,
+  CalendarDays,
+  MoreVertical,
+  Wand2,
+  StickyNote,
+  LayoutGrid,
+} from "lucide-react";
 import {
   DndContext,
   DragEndEvent,
@@ -13,6 +23,7 @@ import {
   PointerSensor,
   TouchSensor,
   closestCenter,
+  useDroppable,
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
@@ -28,8 +39,30 @@ import { useAuth } from "@/context/AuthContext";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
 import { PageShell } from "@/components/layout/PageShell";
 import type { Itinerary, ItineraryDay, ItineraryWaypoint } from "@/types";
+
+// ── constants ──────────────────────────────────────────────────────────────
+
+/** Sentinel droppable id for the unscheduled column. Day ids are UUIDs, so this
+ *  literal can never collide with one. */
+const UNSCHEDULED = "unscheduled";
+
+/** Assumed time spent at a stop when the waypoint doesn't specify one. Matches the
+ *  `stop_duration_minutes: 30` the discover flow sends to /radius/build-itinerary. */
+const DEFAULT_DWELL_MINUTES = 30;
+
+/** Drive + dwell time above which a day is flagged as unrealistic. */
+const DAY_BUDGET_MINUTES = 8 * 60;
 
 // ── helpers ────────────────────────────────────────────────────────────────
 
@@ -40,18 +73,93 @@ function formatDuration(seconds: number | null): string {
   return h > 0 ? `${h}h ${m}m` : `${m}m`;
 }
 
+function formatMinutes(minutes: number): string {
+  const h = Math.floor(minutes / 60);
+  const m = Math.round(minutes % 60);
+  return h > 0 ? `${h}h ${m}m` : `${m}m`;
+}
+
+/** Total committed time for a day: drive legs we know about, plus dwell time per stop.
+ *  `drive_seconds_from_prev` is populated from trip-wide route calculation, so it is
+ *  null for manually-assigned waypoints — those contribute dwell time only. */
+function dayTotalMinutes(day: ItineraryDay): number {
+  const driveMinutes = day.waypoints.reduce(
+    (sum, w) => sum + (w.drive_seconds_from_prev ?? 0) / 60,
+    0
+  );
+  return driveMinutes + day.waypoints.length * DEFAULT_DWELL_MINUTES;
+}
+
 // ── draggable waypoint card ────────────────────────────────────────────────
+
+/** Click/keyboard equivalent of dragging a chip, so assignment never depends on a
+ *  pointer drag. `currentDayId` is null when the chip is in the Unscheduled column. */
+interface AssignMenuProps {
+  days: ItineraryDay[];
+  currentDayId: string | null;
+  onAssign: (dayId: string) => void;
+  onUnassign: () => void;
+  onAssignToNewDay: () => void;
+}
+
+function AssignMenu({
+  days,
+  currentDayId,
+  onAssign,
+  onUnassign,
+  onAssignToNewDay,
+}: AssignMenuProps) {
+  const targets = days.filter((d) => d.id !== currentDayId);
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          // Stop the sensor from reading this as the start of a drag.
+          onPointerDown={(e) => e.stopPropagation()}
+          className="shrink-0 h-5 w-5 flex items-center justify-center rounded text-neutral-300 hover:text-neutral-600 hover:bg-neutral-100"
+          aria-label="Move this stop"
+        >
+          <MoreVertical className="h-3.5 w-3.5" />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-44">
+        <DropdownMenuLabel className="text-xs">Move to</DropdownMenuLabel>
+        {targets.map((d) => (
+          <DropdownMenuItem key={d.id} onSelect={() => onAssign(d.id)} className="text-xs">
+            Day {d.day_number}
+            {d.title ? ` · ${d.title}` : ""}
+          </DropdownMenuItem>
+        ))}
+        <DropdownMenuItem onSelect={onAssignToNewDay} className="text-xs">
+          <Plus className="h-3 w-3 mr-1.5" />
+          New day
+        </DropdownMenuItem>
+        {currentDayId && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onSelect={onUnassign} className="text-xs">
+              Remove from day
+            </DropdownMenuItem>
+          </>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
 
 function WaypointChip({
   waypoint,
   isDragging,
   onUpdateArrivalTime,
   dragHandleProps,
+  assignMenu,
 }: {
   waypoint: ItineraryWaypoint;
   isDragging?: boolean;
   onUpdateArrivalTime?: (waypointId: string, time: string) => void;
   dragHandleProps?: HTMLAttributes<HTMLButtonElement>;
+  assignMenu?: React.ReactNode;
 }) {
   return (
     <div
@@ -78,6 +186,7 @@ function WaypointChip({
           +{formatDuration(waypoint.drive_seconds_from_prev)}
         </span>
       )}
+      {assignMenu}
     </div>
   );
 }
@@ -85,9 +194,11 @@ function WaypointChip({
 function SortableWaypointChip({
   waypoint,
   onUpdateArrivalTime,
+  assignMenu,
 }: {
   waypoint: ItineraryWaypoint;
   onUpdateArrivalTime?: (waypointId: string, time: string) => void;
+  assignMenu?: React.ReactNode;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: waypoint.id,
@@ -100,6 +211,7 @@ function SortableWaypointChip({
         isDragging={isDragging}
         onUpdateArrivalTime={onUpdateArrivalTime}
         dragHandleProps={{ ...attributes, ...listeners }}
+        assignMenu={assignMenu}
       />
     </div>
   );
@@ -109,19 +221,48 @@ function SortableWaypointChip({
 
 interface DayColumnProps {
   day: ItineraryDay;
+  allDays: ItineraryDay[];
+  optimizing: boolean;
   onDelete: (dayId: string) => void;
   onUpdateTitle: (dayId: string, title: string) => void;
   onUpdateDate: (dayId: string, date: string) => void;
+  onUpdateNotes: (dayId: string, notes: string) => void;
   onUpdateArrivalTime: (waypointId: string, time: string) => void;
+  onOptimize: (dayId: string) => void;
+  onAssign: (waypointId: string, dayId: string) => void;
+  onUnassign: (waypointId: string, fromDayId: string) => void;
+  onAssignToNewDay: (waypointId: string) => void;
 }
 
-function DayColumn({ day, onDelete, onUpdateTitle, onUpdateDate, onUpdateArrivalTime }: DayColumnProps) {
+function DayColumn({
+  day,
+  allDays,
+  optimizing,
+  onDelete,
+  onUpdateTitle,
+  onUpdateDate,
+  onUpdateNotes,
+  onUpdateArrivalTime,
+  onOptimize,
+  onAssign,
+  onUnassign,
+  onAssignToNewDay,
+}: DayColumnProps) {
   const [editingTitle, setEditingTitle] = useState(false);
   const [draft, setDraft] = useState(day.title ?? "");
-  const totalDrive = day.waypoints.reduce(
-    (sum, w) => sum + (w.drive_seconds_from_prev ?? 0),
-    0
-  );
+  const [showNotes, setShowNotes] = useState(Boolean(day.notes));
+  const [notesDraft, setNotesDraft] = useState(day.notes ?? "");
+
+  // Registers this column as a real drop target. Without this the column is just a
+  // styled <div> that dnd-kit cannot see, so dropping onto an empty day is a no-op.
+  // `type: "day"` is what the collision branch in handleDragOver keys off.
+  const { setNodeRef, isOver } = useDroppable({
+    id: day.id,
+    data: { type: "day", dayId: day.id },
+  });
+
+  const totalMinutes = dayTotalMinutes(day);
+  const overBudget = totalMinutes > DAY_BUDGET_MINUTES;
 
   return (
     <div className="flex flex-col min-w-[240px] w-[240px] bg-neutral-100 rounded-xl p-3 gap-2">
@@ -158,12 +299,36 @@ function DayColumn({ day, onDelete, onUpdateTitle, onUpdateDate, onUpdateArrival
             </button>
           )}
         </div>
-        <button
-          onClick={() => onDelete(day.id)}
-          className="h-6 w-6 flex items-center justify-center rounded hover:bg-neutral-200 text-neutral-400 hover:text-red-500 shrink-0"
-        >
-          <Trash2 className="h-3 w-3" />
-        </button>
+        <div className="flex items-center gap-0.5 shrink-0">
+          <button
+            onClick={() => onOptimize(day.id)}
+            disabled={optimizing || day.waypoints.length < 3}
+            title={
+              day.waypoints.length < 3
+                ? "Needs at least 3 stops to reorder"
+                : "Reorder stops to cut drive time"
+            }
+            className="h-6 w-6 flex items-center justify-center rounded hover:bg-neutral-200 text-neutral-400 hover:text-primary-600 disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-neutral-400"
+          >
+            <Wand2 className="h-3 w-3" />
+          </button>
+          <button
+            onClick={() => setShowNotes((v) => !v)}
+            title="Day notes"
+            className={`h-6 w-6 flex items-center justify-center rounded hover:bg-neutral-200 ${
+              day.notes ? "text-primary-600" : "text-neutral-400 hover:text-neutral-600"
+            }`}
+          >
+            <StickyNote className="h-3 w-3" />
+          </button>
+          <button
+            onClick={() => onDelete(day.id)}
+            title="Delete day"
+            className="h-6 w-6 flex items-center justify-center rounded hover:bg-neutral-200 text-neutral-400 hover:text-red-500"
+          >
+            <Trash2 className="h-3 w-3" />
+          </button>
+        </div>
       </div>
 
       <label className="text-xs text-neutral-500 flex items-center gap-1">
@@ -176,28 +341,135 @@ function DayColumn({ day, onDelete, onUpdateTitle, onUpdateDate, onUpdateArrival
         />
       </label>
 
+      {showNotes && (
+        <Textarea
+          value={notesDraft}
+          onChange={(e) => setNotesDraft(e.target.value)}
+          onBlur={() => onUpdateNotes(day.id, notesDraft)}
+          placeholder="Notes for this day…"
+          rows={3}
+          className="text-xs bg-white resize-none"
+        />
+      )}
+
       {/* Drop zone */}
       <SortableContext items={day.waypoints.map((w) => w.id)} strategy={verticalListSortingStrategy}>
         <div
-          data-day-id={day.id}
-          className="flex flex-col gap-1.5 min-h-[60px] rounded-lg transition-colors"
+          ref={setNodeRef}
+          className={`flex flex-col gap-1.5 rounded-lg transition-colors ${
+            day.waypoints.length === 0 ? "min-h-[120px]" : "min-h-[60px]"
+          } ${isOver ? "bg-primary-50 ring-2 ring-primary-400 ring-inset" : ""}`}
         >
           {day.waypoints.map((wp) => (
-            <SortableWaypointChip key={wp.id} waypoint={wp} onUpdateArrivalTime={onUpdateArrivalTime} />
+            <SortableWaypointChip
+              key={wp.id}
+              waypoint={wp}
+              onUpdateArrivalTime={onUpdateArrivalTime}
+              assignMenu={
+                <AssignMenu
+                  days={allDays}
+                  currentDayId={day.id}
+                  onAssign={(target) => onAssign(wp.id, target)}
+                  onUnassign={() => onUnassign(wp.id, day.id)}
+                  onAssignToNewDay={() => onAssignToNewDay(wp.id)}
+                />
+              }
+            />
           ))}
           {day.waypoints.length === 0 && (
             <div className="flex-1 flex items-center justify-center text-xs text-neutral-400 italic py-3">
-              Drop waypoints here
+              Drop stops here
             </div>
           )}
         </div>
       </SortableContext>
 
-      {totalDrive > 0 && (
-        <p className="text-xs text-neutral-500 text-right">
-          {formatDuration(totalDrive)} drive
+      {day.waypoints.length > 0 && (
+        <p
+          className={`text-xs text-right ${overBudget ? "text-amber-600 font-medium" : "text-neutral-500"}`}
+          title={`${day.waypoints.length} stop(s) × ${DEFAULT_DWELL_MINUTES}m, plus known drive legs`}
+        >
+          {formatMinutes(totalMinutes)}
+          {overBudget && " · over budget"}
         </p>
       )}
+    </div>
+  );
+}
+
+// ── unscheduled column ────────────────────────────────────────────────────
+
+interface UnscheduledColumnProps {
+  waypoints: ItineraryWaypoint[];
+  days: ItineraryDay[];
+  distributing: boolean;
+  onDistribute: () => void;
+  onAssign: (waypointId: string, dayId: string) => void;
+  onAssignToNewDay: (waypointId: string) => void;
+}
+
+function UnscheduledColumn({
+  waypoints,
+  days,
+  distributing,
+  onDistribute,
+  onAssign,
+  onAssignToNewDay,
+}: UnscheduledColumnProps) {
+  // Dragging a scheduled stop back out needs a real drop target here too.
+  const { setNodeRef, isOver } = useDroppable({
+    id: UNSCHEDULED,
+    data: { type: "day", dayId: UNSCHEDULED },
+  });
+
+  return (
+    <div className="w-64 shrink-0 border-r border-neutral-200 bg-white p-4 overflow-y-auto flex flex-col gap-2">
+      <p className="text-xs font-bold text-neutral-400 uppercase tracking-wide mb-1">
+        Unscheduled ({waypoints.length})
+      </p>
+
+      {waypoints.length > 0 && (
+        <Button
+          variant="outline"
+          size="sm"
+          className="text-xs h-7 mb-1"
+          onClick={onDistribute}
+          disabled={distributing}
+        >
+          <LayoutGrid className="h-3 w-3 mr-1.5" />
+          {distributing ? "Distributing…" : "Distribute across days"}
+        </Button>
+      )}
+
+      <SortableContext items={waypoints.map((w) => w.id)} strategy={verticalListSortingStrategy}>
+        <div
+          ref={setNodeRef}
+          className={`flex flex-col gap-1.5 min-h-[120px] flex-1 rounded-lg transition-colors ${
+            isOver ? "bg-primary-50 ring-2 ring-primary-400 ring-inset" : ""
+          }`}
+        >
+          {waypoints.map((wp) => (
+            <SortableWaypointChip
+              key={wp.id}
+              waypoint={wp}
+              assignMenu={
+                <AssignMenu
+                  days={days}
+                  currentDayId={null}
+                  onAssign={(target) => onAssign(wp.id, target)}
+                  onUnassign={() => {}}
+                  onAssignToNewDay={() => onAssignToNewDay(wp.id)}
+                />
+              }
+            />
+          ))}
+          {waypoints.length === 0 && (
+            <p className="text-xs text-neutral-400 italic py-4 text-center">
+              All stops scheduled
+            </p>
+          )}
+        </div>
+      </SortableContext>
     </div>
   );
 }
@@ -213,9 +485,11 @@ export default function ItineraryPage({ params }: { params: Promise<{ trip_id: s
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeWaypoint, setActiveWaypoint] = useState<ItineraryWaypoint | null>(null);
+  const [distributing, setDistributing] = useState(false);
+  const [optimizingDayId, setOptimizingDayId] = useState<string | null>(null);
   // Container the active drag started in — captured at drag-start since the
   // optimistic move in handleDragOver mutates state before handleDragEnd runs.
-  const dragOriginRef = useRef<string | "unscheduled" | null>(null);
+  const dragOriginRef = useRef<string | typeof UNSCHEDULED | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -242,15 +516,136 @@ export default function ItineraryPage({ params }: { params: Promise<{ trip_id: s
     loadItinerary();
   }, [authLoading, user, router, trip_id, loadItinerary]);
 
-  async function handleAddDay() {
-    if (!itinerary) return;
+  async function handleAddDay(): Promise<ItineraryDay | null> {
+    if (!itinerary) return null;
     try {
       const day = await api.post<ItineraryDay>(`/trips/${trip_id}/itinerary/days`, {});
-      setItinerary((prev) =>
-        prev ? { ...prev, days: [...prev.days, { ...day, waypoints: [] }] } : prev
-      );
+      const created = { ...day, waypoints: [] };
+      setItinerary((prev) => (prev ? { ...prev, days: [...prev.days, created] } : prev));
+      return created;
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to add day");
+      toast.error(err instanceof Error ? err.message : "Failed to add day");
+      return null;
+    }
+  }
+
+  /** Click/keyboard path for assigning a stop to a day — the non-drag equivalent of
+   *  a drop, hitting the same endpoint. */
+  async function handleAssignToDay(waypointId: string, dayId: string) {
+    if (!itinerary) return;
+    const target = itinerary.days.find((d) => d.id === dayId);
+    if (!target) return;
+    const ordered = [...target.waypoints.map((w) => w.id), waypointId];
+    try {
+      await api.post(`/trips/${trip_id}/itinerary/days/${dayId}/assign`, {
+        waypoint_ids: [waypointId],
+        ordered_waypoint_ids: ordered,
+      });
+      await loadItinerary();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to assign stop");
+      await loadItinerary();
+    }
+  }
+
+  async function handleAssignToNewDay(waypointId: string) {
+    const day = await handleAddDay();
+    if (!day) return;
+    try {
+      await api.post(`/trips/${trip_id}/itinerary/days/${day.id}/assign`, {
+        waypoint_ids: [waypointId],
+        ordered_waypoint_ids: [waypointId],
+      });
+      await loadItinerary();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to assign stop");
+      await loadItinerary();
+    }
+  }
+
+  async function handleUnassign(waypointId: string, fromDayId: string) {
+    try {
+      await api.delete(`/trips/${trip_id}/itinerary/days/${fromDayId}/waypoints/${waypointId}`);
+      await loadItinerary();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to unschedule stop");
+      await loadItinerary();
+    }
+  }
+
+  /** Spread every unscheduled stop evenly across the days, preserving their current
+   *  order. Creates a day first if there are none. One request per day, not per stop —
+   *  the assign endpoint already takes an array. */
+  async function handleDistribute() {
+    if (!itinerary || itinerary.unscheduled_waypoints.length === 0) return;
+    setDistributing(true);
+    try {
+      let days = itinerary.days;
+      if (days.length === 0) {
+        const created = await handleAddDay();
+        if (!created) return;
+        days = [created];
+      }
+
+      const pending = itinerary.unscheduled_waypoints.map((w) => w.id);
+      const buckets: string[][] = days.map((d) => d.waypoints.map((w) => w.id));
+
+      // Even chunks, remainder spread over the leading days.
+      const perDay = Math.floor(pending.length / days.length);
+      const remainder = pending.length % days.length;
+      let cursor = 0;
+      for (let i = 0; i < days.length; i++) {
+        const take = perDay + (i < remainder ? 1 : 0);
+        buckets[i].push(...pending.slice(cursor, cursor + take));
+        cursor += take;
+      }
+
+      for (let i = 0; i < days.length; i++) {
+        const added = buckets[i].filter((id) => pending.includes(id));
+        if (added.length === 0) continue;
+        await api.post(`/trips/${trip_id}/itinerary/days/${days[i].id}/assign`, {
+          waypoint_ids: added,
+          ordered_waypoint_ids: buckets[i],
+        });
+      }
+      await loadItinerary();
+      toast.success(`Distributed ${pending.length} stop(s) across ${days.length} day(s)`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to distribute stops");
+      await loadItinerary();
+    } finally {
+      setDistributing(false);
+    }
+  }
+
+  /** Reorder one day's stops to cut drive time. The ordering is computed server-side,
+   *  which is where the distance matrix lives. */
+  async function handleOptimizeDay(dayId: string) {
+    setOptimizingDayId(dayId);
+    try {
+      await api.post(`/trips/${trip_id}/itinerary/days/${dayId}/optimize`, {});
+      await loadItinerary();
+      toast.success("Reordered to cut drive time");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to optimize day");
+    } finally {
+      setOptimizingDayId(null);
+    }
+  }
+
+  async function handleUpdateNotes(dayId: string, notes: string) {
+    const value = notes.trim() || null;
+    try {
+      await api.patch(`/trips/${trip_id}/itinerary/days/${dayId}`, { notes: value });
+      setItinerary((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          days: prev.days.map((d) => (d.id === dayId ? { ...d, notes: value } : d)),
+        };
+      });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to save notes");
     }
   }
 
@@ -261,7 +656,7 @@ export default function ItineraryPage({ params }: { params: Promise<{ trip_id: s
       await api.delete(`/trips/${trip_id}/itinerary/days/${dayId}`);
       await loadItinerary();
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to delete day");
+      toast.error(err instanceof Error ? err.message : "Failed to delete day");
     }
   }
 
@@ -319,12 +714,12 @@ export default function ItineraryPage({ params }: { params: Promise<{ trip_id: s
     }
   }
 
-  function findWaypointContainer(wpId: string): string | "unscheduled" | null {
+  function findWaypointContainer(wpId: string): string | typeof UNSCHEDULED | null {
     if (!itinerary) return null;
     for (const day of itinerary.days) {
       if (day.waypoints.some((w) => w.id === wpId)) return day.id;
     }
-    if (itinerary.unscheduled_waypoints.some((w) => w.id === wpId)) return "unscheduled";
+    if (itinerary.unscheduled_waypoints.some((w) => w.id === wpId)) return UNSCHEDULED;
     return null;
   }
 
@@ -344,8 +739,8 @@ export default function ItineraryPage({ params }: { params: Promise<{ trip_id: s
 
     const fromContainer = findWaypointContainer(activeId);
 
-    // Determine target container (could be a day id or "unscheduled")
-    let toContainer: string | "unscheduled" | null = null;
+    // Determine target container (could be a day id or the unscheduled sentinel)
+    let toContainer: string | typeof UNSCHEDULED | null = null;
     if (over.data.current?.type === "day") {
       toContainer = overId;
     } else {
@@ -358,7 +753,7 @@ export default function ItineraryPage({ params }: { params: Promise<{ trip_id: s
       // Same-container reorder
       setItinerary((prev) => {
         if (!prev) return prev;
-        if (toContainer === "unscheduled") {
+        if (toContainer === UNSCHEDULED) {
           const oldIndex = prev.unscheduled_waypoints.findIndex((w) => w.id === activeId);
           const newIndex = prev.unscheduled_waypoints.findIndex((w) => w.id === overId);
           if (oldIndex === -1 || newIndex === -1) return prev;
@@ -407,7 +802,7 @@ export default function ItineraryPage({ params }: { params: Promise<{ trip_id: s
 
       if (!movedWp) return prev;
 
-      if (toContainer === "unscheduled") {
+      if (toContainer === UNSCHEDULED) {
         return { ...prev, days: updatedDays, unscheduled_waypoints: [...updatedUnscheduled, movedWp] };
       }
 
@@ -434,7 +829,7 @@ export default function ItineraryPage({ params }: { params: Promise<{ trip_id: s
 
     if (!targetDay) {
       // Landed in Unscheduled.
-      if (origin && origin !== "unscheduled") {
+      if (origin && origin !== UNSCHEDULED) {
         try {
           await api.delete(`/trips/${trip_id}/itinerary/days/${origin}/waypoints/${activeId}`);
         } catch (err) {
@@ -516,26 +911,14 @@ export default function ItineraryPage({ params }: { params: Promise<{ trip_id: s
           onDragEnd={handleDragEnd}
         >
           {/* Left: unscheduled */}
-          <div className="w-64 shrink-0 border-r border-neutral-200 bg-white p-4 overflow-y-auto flex flex-col gap-2">
-            <p className="text-xs font-bold text-neutral-400 uppercase tracking-wide mb-1">
-              Unscheduled ({itinerary.unscheduled_waypoints.length})
-            </p>
-            <SortableContext
-              items={itinerary.unscheduled_waypoints.map((w) => w.id)}
-              strategy={verticalListSortingStrategy}
-            >
-              <div data-container="unscheduled" className="flex flex-col gap-1.5 min-h-[60px]">
-                {itinerary.unscheduled_waypoints.map((wp) => (
-                  <SortableWaypointChip key={wp.id} waypoint={wp} />
-                ))}
-                {itinerary.unscheduled_waypoints.length === 0 && (
-                  <p className="text-xs text-neutral-400 italic py-4 text-center">
-                    All waypoints scheduled
-                  </p>
-                )}
-              </div>
-            </SortableContext>
-          </div>
+          <UnscheduledColumn
+            waypoints={itinerary.unscheduled_waypoints}
+            days={itinerary.days}
+            distributing={distributing}
+            onDistribute={handleDistribute}
+            onAssign={handleAssignToDay}
+            onAssignToNewDay={handleAssignToNewDay}
+          />
 
           {/* Right: day columns */}
           <div className="flex-1 overflow-x-auto p-4">
@@ -544,17 +927,29 @@ export default function ItineraryPage({ params }: { params: Promise<{ trip_id: s
                 <DayColumn
                   key={day.id}
                   day={day}
+                  allDays={itinerary.days}
+                  optimizing={optimizingDayId === day.id}
                   onDelete={handleDeleteDay}
                   onUpdateTitle={handleUpdateTitle}
                   onUpdateDate={handleUpdateDate}
+                  onUpdateNotes={handleUpdateNotes}
                   onUpdateArrivalTime={handleUpdateArrivalTime}
+                  onOptimize={handleOptimizeDay}
+                  onAssign={handleAssignToDay}
+                  onUnassign={handleUnassign}
+                  onAssignToNewDay={handleAssignToNewDay}
                 />
               ))}
 
               {itinerary.days.length === 0 && (
                 <div className="flex items-center justify-center flex-1 text-neutral-400">
-                  <div className="text-center">
-                    <p className="text-sm mb-3">No days yet. Add your first day to get started.</p>
+                  <div className="text-center max-w-xs">
+                    <p className="text-sm mb-1 text-neutral-600 font-medium">No days yet</p>
+                    <p className="text-xs mb-3">
+                      {itinerary.unscheduled_waypoints.length > 0
+                        ? `Add a day, then drag any of your ${itinerary.unscheduled_waypoints.length} stop(s) onto it — or use "Distribute across days".`
+                        : "Add a day to start building your itinerary."}
+                    </p>
                     <Button onClick={handleAddDay} size="sm" variant="outline">
                       <Plus className="h-4 w-4 mr-1.5" />
                       Add Day
@@ -562,6 +957,24 @@ export default function ItineraryPage({ params }: { params: Promise<{ trip_id: s
                   </div>
                 </div>
               )}
+
+              {itinerary.days.length > 0 &&
+                itinerary.unscheduled_waypoints.length === 0 &&
+                itinerary.days.every((d) => d.waypoints.length === 0) && (
+                  <div className="flex items-center justify-center flex-1 text-neutral-400">
+                    <div className="text-center max-w-xs">
+                      <p className="text-sm mb-1 text-neutral-600 font-medium">
+                        No stops on this trip yet
+                      </p>
+                      <p className="text-xs mb-3">
+                        Add stops to your trip, then come back to schedule them across days.
+                      </p>
+                      <Button asChild size="sm" variant="outline">
+                        <Link href={`/trips/${trip_id}`}>Go to trip</Link>
+                      </Button>
+                    </div>
+                  </div>
+                )}
             </div>
           </div>
 

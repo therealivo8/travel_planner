@@ -1,12 +1,13 @@
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.deps import CurrentUser
+from app.core.limiter import limiter
 from app.db.session import get_db
 from app.models.trip import ItineraryDay, Trip, Waypoint
 from app.schemas.trip import (
@@ -18,6 +19,7 @@ from app.schemas.trip import (
     ItineraryWaypointOut,
     SetArrivalTimeRequest,
 )
+from app.services import itinerary_builder
 
 router = APIRouter(prefix="/trips/{trip_id}/itinerary", tags=["itinerary"])
 
@@ -307,3 +309,65 @@ async def set_arrival_time(
     await db.commit()
     await db.refresh(waypoint)
     return _waypoint_to_itinerary_out(waypoint)
+
+
+@router.post("/days/{day_id}/optimize", response_model=ItineraryDayOut)
+@limiter.limit("30/hour")
+async def optimize_day(
+    request: Request,
+    trip_id: uuid.UUID,
+    day_id: uuid.UUID,
+    current_user: CurrentUser,
+    db: DB,
+) -> ItineraryDayOut:
+    """Reorder one day's stops to cut drive time, writing the result to day_position.
+
+    Rate-limited because it calls the Google distance matrix once per stop.
+    """
+    await _get_owned_trip(trip_id, current_user.id, db)
+
+    result = await db.execute(
+        select(ItineraryDay)
+        .where(ItineraryDay.id == day_id, ItineraryDay.trip_id == trip_id)
+        .options(selectinload(ItineraryDay.waypoints))
+    )
+    day = result.scalar_one_or_none()
+    if day is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Day not found")
+
+    ordered = sorted(
+        day.waypoints, key=lambda w: (w.day_position is None, w.day_position, w.position)
+    )
+    if len(ordered) < 3:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="A day needs at least 3 stops to reorder",
+        )
+
+    try:
+        build = itinerary_builder.order_day_stops(
+            [{"id": w.id, "lat": float(w.lat), "lng": float(w.lng)} for w in ordered]
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Could not reach the routing service to reorder this day",
+        ) from exc
+
+    by_id = {w.id: w for w in ordered}
+    for pos, (wp_id, leg) in enumerate(
+        zip(build["ordered_stop_ids"], build["leg_seconds"])
+    ):
+        wp = by_id[wp_id]
+        wp.day_position = pos
+        # Keep the per-leg drive time consistent with the new sequence. The first
+        # stop has no in-day predecessor, so its leg is cleared.
+        wp.drive_seconds_from_prev = leg
+    await db.commit()
+
+    result2 = await db.execute(
+        select(ItineraryDay)
+        .where(ItineraryDay.id == day_id)
+        .options(selectinload(ItineraryDay.waypoints))
+    )
+    return _day_to_out(result2.scalar_one())

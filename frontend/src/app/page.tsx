@@ -1,6 +1,6 @@
 import Link from "next/link";
-import { MapPin, ArrowRight, Circle, Sparkles, ChevronDown } from "lucide-react";
-import { Button, Badge } from "@/components/ui";
+import { MapPin, ArrowRight, Circle, ChevronDown } from "lucide-react";
+import { Button } from "@/components/ui";
 
 // Inline topographic SVG pattern — no image asset needed
 function TopoPattern() {
@@ -46,7 +46,6 @@ const features = [
     title: "Point-to-Point",
     description:
       "Set your start and end points, add waypoints, and get a complete route with drive times and distances.",
-    badge: null as string | null,
   },
   {
     id: "radius",
@@ -54,15 +53,6 @@ const features = [
     title: "Radius Explorer",
     description:
       "Enter a center location and a max drive time. We surface every destination worth visiting within reach.",
-    badge: null as string | null,
-  },
-  {
-    id: "ai",
-    icon: <Sparkles className="h-8 w-8 text-primary-500" />,
-    title: "AI Trip Assistant",
-    description:
-      "Chat with an AI to get personalized stop suggestions, local tips, and a full itinerary drafted for you.",
-    badge: "Coming soon" as string | null,
   },
 ];
 
@@ -140,21 +130,14 @@ export default function HomePage() {
             </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl mx-auto">
             {features.map((feature) => (
               <div
                 key={feature.id}
                 className="relative rounded-xl border border-neutral-200 bg-white p-8 flex flex-col gap-4 hover:shadow-md transition-shadow"
               >
                 <div className="h-12 flex items-center">{feature.icon}</div>
-                <div className="flex items-center gap-2">
-                  <h3 className="text-lg font-semibold text-neutral-900">{feature.title}</h3>
-                  {feature.badge && (
-                    <Badge variant="outline" className="text-xs">
-                      {feature.badge}
-                    </Badge>
-                  )}
-                </div>
+                <h3 className="text-lg font-semibold text-neutral-900">{feature.title}</h3>
                 <p className="text-neutral-500 text-sm leading-relaxed">{feature.description}</p>
               </div>
             ))}
