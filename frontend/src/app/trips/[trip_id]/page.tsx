@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { use } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, RefreshCw, Trash2, PencilLine, Check, X, Share2, FileDown, CalendarDays } from "lucide-react";
+import { ArrowLeft, RefreshCw, Trash2, PencilLine, Check, X, Share2, FileDown, CalendarDays, ListChecks } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -314,6 +314,12 @@ export default function TripDetailPage({
               <Link href={`/trips/${trip_id}/itinerary`}>
                 <CalendarDays className="h-3.5 w-3.5" />
                 Itinerary
+              </Link>
+            </Button>
+            <Button variant="ghost" size="sm" className="gap-1.5 text-xs" asChild>
+              <Link href={`/trips/${trip_id}/schedule`}>
+                <ListChecks className="h-3.5 w-3.5" />
+                Schedule
               </Link>
             </Button>
             <Button

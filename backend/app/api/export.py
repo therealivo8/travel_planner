@@ -53,7 +53,13 @@ def _build_html(trip: Trip) -> str:
     # Build day sections
     day_sections = ""
     for day in sorted_days:
-        day_wps = sorted(day_wp_map[day.id], key=lambda w: w.position)
+        # Order within a day comes from day_position, which the itinerary board writes;
+        # the trip-wide `position` is route order and would list stops differently from
+        # how the user arranged them. Matches _day_to_out() and the share view.
+        day_wps = sorted(
+            day_wp_map[day.id],
+            key=lambda w: (w.day_position is None, w.day_position, w.position),
+        )
         date_str = day.date.strftime("%B %d, %Y") if day.date else f"Day {day.day_number}"
         title_str = _e(day.title) or f"Day {day.day_number}"
 

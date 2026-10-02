@@ -1,10 +1,11 @@
 "use client";
 
-import { use, useCallback, useEffect, useRef, useState, type HTMLAttributes } from "react";
+import { use, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
+  ArrowRight,
   Plus,
   Trash2,
   GripVertical,
@@ -13,6 +14,8 @@ import {
   Wand2,
   StickyNote,
   LayoutGrid,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import {
   DndContext,
@@ -20,16 +23,20 @@ import {
   DragOverEvent,
   DragOverlay,
   DragStartEvent,
+  KeyboardSensor,
   PointerSensor,
   TouchSensor,
-  closestCenter,
+  pointerWithin,
+  rectIntersection,
   useDroppable,
   useSensor,
   useSensors,
+  type CollisionDetection,
 } from "@dnd-kit/core";
 import {
   SortableContext,
   arrayMove,
+  sortableKeyboardCoordinates,
   useSortable,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
@@ -63,6 +70,13 @@ const DEFAULT_DWELL_MINUTES = 30;
 
 /** Drive + dwell time above which a day is flagged as unrealistic. */
 const DAY_BUDGET_MINUTES = 8 * 60;
+
+/** Prefer whatever is under the pointer; fall back to rectangle overlap when the
+ *  pointer is in a gap between targets, so a drag never silently resolves to nothing. */
+const pointerWithinOrIntersecting: CollisionDetection = (args) => {
+  const hits = pointerWithin(args);
+  return hits.length > 0 ? hits : rectIntersection(args);
+};
 
 // ── helpers ────────────────────────────────────────────────────────────────
 
@@ -151,42 +165,97 @@ function AssignMenu({
 function WaypointChip({
   waypoint,
   isDragging,
+  isOverlay,
   onUpdateArrivalTime,
-  dragHandleProps,
   assignMenu,
 }: {
   waypoint: ItineraryWaypoint;
   isDragging?: boolean;
+  /** Rendered inside the DragOverlay — the chip that follows the cursor. It is free
+   *  of the column's width, so it shows the full label instead of truncating. */
+  isOverlay?: boolean;
   onUpdateArrivalTime?: (waypointId: string, time: string) => void;
-  dragHandleProps?: HTMLAttributes<HTMLButtonElement>;
   assignMenu?: React.ReactNode;
 }) {
+  const [expanded, setExpanded] = useState(false);
+  const name = waypoint.label || waypoint.address;
+  // The label and the address are often different strings; only worth showing the
+  // address separately when it adds something.
+  const secondary = waypoint.label && waypoint.address !== waypoint.label ? waypoint.address : null;
+  // Roughly the point where a name stops fitting a 240px column. A heuristic rather
+  // than a measurement — it only decides whether to offer the expand toggle, and the
+  // `title` tooltip covers anything it misjudges.
+  const isTruncatable = name.length > 24;
+
   return (
     <div
-      className={`flex items-center gap-2 px-3 py-2 bg-white rounded-lg border border-neutral-200 shadow-sm text-sm select-none ${
+      className={`flex flex-col gap-1 px-2.5 py-2 bg-white rounded-lg border shadow-sm text-sm select-none ${
         isDragging ? "opacity-50" : ""
-      }`}
+      } ${isOverlay ? "border-primary-400 shadow-lg ring-2 ring-primary-200 w-[260px]" : "border-neutral-200"}`}
     >
-      <button type="button" className="shrink-0 cursor-grab touch-none" {...dragHandleProps}>
-        <GripVertical className="h-3.5 w-3.5 text-neutral-300" />
-      </button>
-      <span className="truncate flex-1 text-neutral-800">{waypoint.label || waypoint.address}</span>
-      {onUpdateArrivalTime && (
-        <input
-          type="time"
-          value={waypoint.scheduled_arrival_time?.slice(0, 5) ?? ""}
-          onChange={(e) => onUpdateArrivalTime(waypoint.id, e.target.value)}
-          onPointerDown={(e) => e.stopPropagation()}
-          className="text-xs text-neutral-500 border border-neutral-200 rounded px-1 py-0.5 w-[5.5rem] shrink-0"
-          aria-label="Arrival time"
-        />
-      )}
-      {waypoint.drive_seconds_from_prev != null && (
-        <span className="text-xs text-neutral-400 shrink-0">
-          +{formatDuration(waypoint.drive_seconds_from_prev)}
+      {/* Row 1 — the name gets the full width of the chip. */}
+      <div className="flex items-start gap-1.5">
+        {/* Affordance only — the whole chip is draggable, so this is not a handle. */}
+        <span className="shrink-0 pt-0.5" aria-hidden="true">
+          <GripVertical className="h-3.5 w-3.5 text-neutral-300" />
         </span>
+
+        {/* Plain text, not a control: pointer events pass through to the drag
+            sensor so the name — the chip's largest surface — is draggable. */}
+        <span
+          title={expanded || isOverlay ? undefined : name}
+          className={`flex-1 min-w-0 text-neutral-800 leading-snug ${
+            expanded || isOverlay ? "" : "truncate"
+          }`}
+        >
+          {name}
+        </span>
+
+        {/* Expanding is its own control, so it can't be confused with a drag. */}
+        {!isOverlay && (isTruncatable || secondary) && (
+          <button
+            type="button"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={() => setExpanded((v) => !v)}
+            aria-expanded={expanded}
+            aria-label={expanded ? `Collapse ${name}` : `Show full name for ${name}`}
+            className="shrink-0 h-5 w-5 flex items-center justify-center rounded text-neutral-300 hover:text-neutral-600 hover:bg-neutral-100"
+          >
+            {expanded ? (
+              <ChevronUp className="h-3.5 w-3.5" />
+            ) : (
+              <ChevronDown className="h-3.5 w-3.5" />
+            )}
+          </button>
+        )}
+
+        {assignMenu}
+      </div>
+
+      {(expanded || isOverlay) && secondary && (
+        <p className="text-xs text-neutral-500 leading-snug pl-5">{secondary}</p>
       )}
-      {assignMenu}
+
+      {/* Row 2 — scheduling controls, below the name rather than competing with it. */}
+      {(onUpdateArrivalTime || waypoint.drive_seconds_from_prev != null) && (
+        <div className="flex items-center gap-2 pl-5">
+          {onUpdateArrivalTime && (
+            <input
+              type="time"
+              value={waypoint.scheduled_arrival_time?.slice(0, 5) ?? ""}
+              onChange={(e) => onUpdateArrivalTime(waypoint.id, e.target.value)}
+              onPointerDown={(e) => e.stopPropagation()}
+              className="text-xs text-neutral-500 border border-neutral-200 rounded px-1 py-0.5 w-[5.5rem] shrink-0"
+              aria-label={`Arrival time for ${name}`}
+            />
+          )}
+          {waypoint.drive_seconds_from_prev != null && (
+            <span className="text-xs text-neutral-400 shrink-0">
+              +{formatDuration(waypoint.drive_seconds_from_prev)}
+            </span>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -205,12 +274,21 @@ function SortableWaypointChip({
     data: { waypoint },
   });
   return (
-    <div ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition }}>
+    // The whole chip is the drag surface, not just the 14px grip — a grip-only
+    // handle is a hard target in a 240px column. Children that need their own
+    // pointer events (the time input, the name, the menu) stop propagation, so
+    // they stay clickable; `touch-none` keeps the touch sensor from scrolling.
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+      className="touch-none cursor-grab active:cursor-grabbing"
+      {...attributes}
+      {...listeners}
+    >
       <WaypointChip
         waypoint={waypoint}
         isDragging={isDragging}
         onUpdateArrivalTime={onUpdateArrivalTime}
-        dragHandleProps={{ ...attributes, ...listeners }}
         assignMenu={assignMenu}
       />
     </div>
@@ -493,7 +571,9 @@ export default function ItineraryPage({ params }: { params: Promise<{ trip_id: s
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } })
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } }),
+    // Space/Enter picks a chip up, arrows move it, Space drops it.
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
   const loadItinerary = useCallback(async () => {
@@ -882,6 +962,9 @@ export default function ItineraryPage({ params }: { params: Promise<{ trip_id: s
     );
   }
 
+  // Something is actually planned — gates the "next step" CTA.
+  const hasSchedule = itinerary.days.some((d) => d.waypoints.length > 0);
+
   return (
     <PageShell fullBleed className="overflow-hidden">
       {/* Sub-header */}
@@ -895,17 +978,34 @@ export default function ItineraryPage({ params }: { params: Promise<{ trip_id: s
             </Button>
             <h1 className="text-lg font-semibold text-neutral-900">Itinerary Builder</h1>
           </div>
-          <Button onClick={handleAddDay} size="sm">
-            <Plus className="h-4 w-4 mr-1.5" />
-            Add Day
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button onClick={handleAddDay} size="sm" variant="outline">
+              <Plus className="h-4 w-4 mr-1.5" />
+              Add Day
+            </Button>
+            {/* The board is for arranging; this is where arranging leads. Shown
+                only once something is scheduled — `disabled` has no effect on an
+                anchor, so the button is omitted rather than visually disabled. */}
+            {hasSchedule && (
+              <Button size="sm" asChild>
+                <Link href={`/trips/${trip_id}/schedule`}>
+                  View schedule
+                  <ArrowRight className="h-4 w-4 ml-1.5" />
+                </Link>
+              </Button>
+            )}
+          </div>
         </div>
       </div>
 
       <div className="flex flex-1 min-h-0 overflow-hidden">
         <DndContext
           sensors={sensors}
-          collisionDetection={closestCenter}
+          // pointerWithin follows the cursor rather than the dragged chip's centre.
+          // With the taller two-row chips, closestCenter would resolve against the
+          // overlay's midpoint and miss the column the user is actually pointing at;
+          // it falls back to rectIntersection when the pointer is between targets.
+          collisionDetection={pointerWithinOrIntersecting}
           onDragStart={handleDragStart}
           onDragOver={handleDragOver}
           onDragEnd={handleDragEnd}
@@ -978,8 +1078,8 @@ export default function ItineraryPage({ params }: { params: Promise<{ trip_id: s
             </div>
           </div>
 
-          <DragOverlay>
-            {activeWaypoint && <WaypointChip waypoint={activeWaypoint} />}
+          <DragOverlay dropAnimation={null}>
+            {activeWaypoint && <WaypointChip waypoint={activeWaypoint} isOverlay />}
           </DragOverlay>
         </DndContext>
       </div>
