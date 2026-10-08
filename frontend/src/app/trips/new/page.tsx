@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { use, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Circle, ArrowRight } from "lucide-react";
@@ -14,6 +14,7 @@ import { cn } from "@/lib/utils";
 import { AddressAutocomplete, GoogleMapsProvider } from "@/components/routing";
 import type { AddressSelection } from "@/components/routing";
 import type { Trip } from "@/types";
+import { usePageTitle } from "@/hooks/usePageTitle";
 import { PageShell } from "@/components/layout/PageShell";
 
 type Mode = "point_to_point" | "radius";
@@ -42,7 +43,13 @@ const radiusSchema = baseSchema.extend({
 
 type FieldErrors = Partial<Record<string, string>>;
 
-export default function NewTripPage() {
+export default function NewTripPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ mode?: string }>;
+}) {
+  const { mode: initialMode } = use(searchParams);
+  usePageTitle("New trip");
   const { user, isLoading: authLoading } = useAuth();
   const router = useRouter();
 
@@ -52,11 +59,20 @@ export default function NewTripPage() {
     }
   }, [authLoading, user, router]);
 
-  const [mode, setMode] = useState<Mode>("point_to_point");
+  const [mode, setMode] = useState<Mode>(
+    initialMode === "radius" ? "radius" : "point_to_point"
+  );
   const [title, setTitle] = useState("");
   const [notes, setNotes] = useState("");
   const [maxDriveMinutes, setMaxDriveMinutes] = useState("");
-  const [start, setStart] = useState<AddressSelection | null>(null);
+  // The saved home address pre-fills the start. Its coordinates were stored with it, so
+  // this needs no geocode call; picking another address overrides it.
+  const [startOverride, setStart] = useState<AddressSelection | null>(null);
+  const home: AddressSelection | null =
+    user?.home_address && user.home_lat != null && user.home_lng != null
+      ? { address: user.home_address, lat: user.home_lat, lng: user.home_lng, place_id: null }
+      : null;
+  const start = startOverride ?? home;
   const [end, setEnd] = useState<AddressSelection | null>(null);
   const [errors, setErrors] = useState<FieldErrors>({});
   const [serverError, setServerError] = useState<string | null>(null);
@@ -91,7 +107,11 @@ export default function NewTripPage() {
     setErrors({});
     setPending(true);
     try {
-      const trip = await api.post<Trip>("/trips", { ...result.data, mode });
+      const trip = await api.post<Trip>("/trips", {
+        ...result.data,
+        mode,
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      });
       if (mode === "point_to_point") {
         try {
           await api.post(`/trips/${trip.id}/calculate-route`);
@@ -116,7 +136,7 @@ export default function NewTripPage() {
         <div className="max-w-2xl mx-auto px-4 sm:px-6 py-8 w-full">
           <div className="flex items-center gap-3 mb-6">
             <Button variant="ghost" size="icon" asChild>
-              <Link href="/trips">
+              <Link href="/trips" aria-label="Back to trips">
                 <ArrowLeft className="h-4 w-4" />
               </Link>
             </Button>

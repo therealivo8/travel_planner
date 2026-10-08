@@ -210,7 +210,7 @@ export default function DesignPage() {
                     title="Pacific Coast Highway"
                     mode="point_to_point"
                     status="planned"
-                    distanceMi={650}
+                    distance={{ value: 650, unit: "mi" }}
                     driveTimeMin={720}
                     stopCount={5}
                     updatedAt={new Date()}
@@ -225,7 +225,7 @@ export default function DesignPage() {
                     title="Route 66 Complete"
                     mode="point_to_point"
                     status="completed"
-                    distanceMi={2278}
+                    distance={{ value: 2278, unit: "mi" }}
                     driveTimeMin={2100}
                     stopCount={12}
                   />

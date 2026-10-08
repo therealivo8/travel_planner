@@ -56,6 +56,12 @@ class Settings(BaseSettings):
     isochrone_cache_ttl_days: int = 90
     # Unselected stored suggestions older than this are deleted daily (Google terms).
     suggestion_retention_days: int = 30
+    # Password-reset email (Resend). With no key the reset link is logged instead, so local
+    # development needs no account — same pattern as sentry_dsn.
+    resend_api_key: str = ""
+    email_from: str = "Road Trip Planner <onboarding@resend.dev>"
+    # Public origin of the frontend, used to build links in emails.
+    frontend_url: str = "http://localhost:3000"
     # Comma-separated emails allowed to view /admin/usage.
     admin_emails: str = ""
 

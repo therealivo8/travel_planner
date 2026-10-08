@@ -110,6 +110,27 @@ async function request<T>(path: string, options: RequestOptions = {}, isRetry = 
   return res.json() as Promise<T>;
 }
 
+/** The human-readable part of a thrown API error: pulls `detail` out of "API 400: {...}". */
+export function apiErrorMessage(err: unknown, fallback = "Something went wrong"): string {
+  if (!(err instanceof Error)) return fallback;
+  const match = /^API \d+: ([\s\S]*)$/.exec(err.message);
+  if (!match) return err.message || fallback;
+  try {
+    const body = JSON.parse(match[1]) as { detail?: unknown };
+    if (typeof body.detail === "string") return body.detail;
+    if (Array.isArray(body.detail)) {
+      // FastAPI validation errors: [{msg: "Value error, Password must be ..."}]
+      return body.detail
+        .map((d) => String((d as { msg?: string }).msg ?? "").replace(/^Value error, /, ""))
+        .filter(Boolean)
+        .join(" ") || fallback;
+    }
+  } catch {
+    // not JSON: fall through
+  }
+  return match[1] || fallback;
+}
+
 /** A guardrail refusal: `budget_exhausted` (shared API budget, 503) or `user_quota` (429). */
 export class ApiError extends Error {
   constructor(
@@ -144,7 +165,8 @@ export const api = {
   patch: <T>(path: string, body?: unknown, options?: Omit<RequestOptions, "method" | "body">) =>
     request<T>(path, { ...options, method: "PATCH", body }),
 
-  delete: <T>(path: string, options?: Omit<RequestOptions, "method" | "body">) =>
+  // A body is allowed because DELETE /auth/me needs the password to confirm.
+  delete: <T>(path: string, options?: Omit<RequestOptions, "method">) =>
     request<T>(path, { ...options, method: "DELETE" }),
 };
 

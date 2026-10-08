@@ -3,15 +3,41 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { use } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { ArrowLeft, RefreshCw, Trash2, PencilLine, Check, X, Share2, FileDown, CalendarDays, ListChecks } from "lucide-react";
+import { notFound, useRouter } from "next/navigation";
+import { toast } from "sonner";
+import { useConfirm } from "@/components/common/ConfirmProvider";
+import { usePageTitle } from "@/hooks/usePageTitle";
+import {
+  ArrowLeft,
+  RefreshCw,
+  Trash2,
+  PencilLine,
+  Check,
+  X,
+  Share2,
+  FileDown,
+  CalendarDays,
+  ListChecks,
+  Wallet,
+  Backpack,
+  ChevronDown,
+} from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
-import { api } from "@/lib/api";
+import { api, getApiToken } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { ShareModal } from "@/components/trips/ShareModal";
+import { FirstVisitTips } from "@/components/trips/FirstVisitTips";
+import { NavButtons } from "@/components/logistics/NavButtons";
+import { useTripNavigation } from "@/hooks/useTripExtras";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   GoogleMapsProvider,
   TripMap,
@@ -35,19 +61,29 @@ export default function TripDetailPage({
 }) {
   const { trip_id } = use(params);
   const router = useRouter();
+  const ask = useConfirm();
   const { user, isLoading: authLoading } = useAuth();
 
   const [trip, setTrip] = useState<Trip | null>(null);
+  usePageTitle(trip?.title);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [calculating, setCalculating] = useState(false);
   const [routeError, setRouteError] = useState<string | null>(null);
   const [showShareModal, setShowShareModal] = useState(false);
-  const [exportingPdf, setExportingPdf] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  // Phones show the map collapsible above the stop list; desktop always shows it.
+  const [mapOpen, setMapOpen] = useState(true);
 
   // Inline title editing
   const [editingTitle, setEditingTitle] = useState(false);
   const [draftTitle, setDraftTitle] = useState("");
+
+  const navigation = useTripNavigation(
+    trip_id,
+    Boolean(trip),
+    (trip?.waypoints ?? []).map((w) => w.id).join(",")
+  );
 
   const recalcTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -114,29 +150,39 @@ export default function TripDetailPage({
   }
 
   async function handleDeleteTrip() {
-    if (!confirm("Delete this trip? This cannot be undone.")) return;
-    await api.delete(`/trips/${trip_id}`);
-    router.push("/trips");
+    const ok = await ask({
+      title: "Delete this trip?",
+      description: "The trip, its stops and its itinerary will be permanently removed.",
+      confirmLabel: "Delete trip",
+      destructive: true,
+    });
+    if (!ok) return;
+    try {
+      await api.delete(`/trips/${trip_id}`);
+      router.push("/trips");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to delete trip");
+    }
   }
 
-  async function handleExportPdf() {
-    setExportingPdf(true);
+  async function handleExport(path: string, extension: string) {
+    setExporting(true);
     try {
-      const res = await fetch(`/api/trips/${trip_id}/export/pdf`, {
-        headers: { Authorization: `Bearer ${(await import("@/lib/api")).getApiToken() ?? ""}` },
+      const res = await fetch(`/api/trips/${trip_id}/export/${path}`, {
+        headers: { Authorization: `Bearer ${getApiToken() ?? ""}` },
       });
       if (!res.ok) throw new Error("Export failed");
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `${trip?.title ?? "trip"}.pdf`;
+      a.download = `${trip?.title ?? "trip"}.${extension}`;
       a.click();
       URL.revokeObjectURL(url);
     } catch (err) {
-      alert(err instanceof Error ? err.message : "PDF export failed");
+      toast.error(err instanceof Error ? err.message : "Export failed");
     } finally {
-      setExportingPdf(false);
+      setExporting(false);
     }
   }
 
@@ -232,6 +278,9 @@ export default function TripDetailPage({
     );
   }
 
+  // A missing (or someone else's) trip gets the proper 404 page instead of an inline message.
+  if (error?.startsWith("API 404") || error?.startsWith("API 422")) notFound();
+
   if (error || !trip) {
     return (
       <PageShell fullBleed>
@@ -256,10 +305,10 @@ export default function TripDetailPage({
     <GoogleMapsProvider>
       <PageShell fullWidth className="max-w-5xl mx-auto w-full">
         {/* Page header row */}
-        <div className="flex items-center justify-between gap-3 mb-6">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
           <div className="flex items-center gap-3 min-w-0">
             <Button variant="ghost" size="icon" asChild>
-              <Link href="/trips">
+              <Link href="/trips" aria-label="Back to trips">
                 <ArrowLeft className="h-4 w-4" />
               </Link>
             </Button>
@@ -276,7 +325,13 @@ export default function TripDetailPage({
                   className="h-8 text-base font-semibold"
                   autoFocus
                 />
-                <Button size="icon" variant="ghost" className="h-8 w-8" onClick={handleSaveTitle}>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-8 w-8"
+                  onClick={handleSaveTitle}
+                  aria-label="Save title"
+                >
                   <Check className="h-4 w-4 text-primary-600" />
                 </Button>
                 <Button
@@ -284,6 +339,7 @@ export default function TripDetailPage({
                   variant="ghost"
                   className="h-8 w-8"
                   onClick={() => setEditingTitle(false)}
+                  aria-label="Cancel editing title"
                 >
                   <X className="h-4 w-4 text-neutral-400" />
                 </Button>
@@ -309,7 +365,7 @@ export default function TripDetailPage({
             </Badge>
           </div>
 
-          <div className="flex items-center gap-1 shrink-0">
+          <div className="flex flex-wrap items-center gap-1">
             <Button variant="ghost" size="sm" className="gap-1.5 text-xs" asChild>
               <Link href={`/trips/${trip_id}/itinerary`}>
                 <CalendarDays className="h-3.5 w-3.5" />
@@ -331,16 +387,41 @@ export default function TripDetailPage({
               <Share2 className="h-3.5 w-3.5" />
               Share
             </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="gap-1.5 text-xs"
-              onClick={handleExportPdf}
-              disabled={exportingPdf}
-            >
-              <FileDown className={`h-3.5 w-3.5 ${exportingPdf ? "animate-bounce" : ""}`} />
-              {exportingPdf ? "Exporting…" : "Export PDF"}
+            <Button variant="ghost" size="sm" className="gap-1.5 text-xs" asChild>
+              <Link href={`/trips/${trip_id}/budget`}>
+                <Wallet className="h-3.5 w-3.5" />
+                Budget
+              </Link>
             </Button>
+            <Button variant="ghost" size="sm" className="gap-1.5 text-xs" asChild>
+              <Link href={`/trips/${trip_id}/packing`}>
+                <Backpack className="h-3.5 w-3.5" />
+                Packing
+              </Link>
+            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm" className="gap-1.5 text-xs" disabled={exporting}>
+                  <FileDown className={`h-3.5 w-3.5 ${exporting ? "animate-bounce" : ""}`} />
+                  {exporting ? "Exporting…" : "Export"}
+                  <ChevronDown className="h-3 w-3" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuItem onSelect={() => handleExport("pdf", "pdf")}>
+                  PDF itinerary
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => handleExport("pdf?include_packing=true", "pdf")}>
+                  PDF with packing list
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => handleExport("ics", "ics")}>
+                  Calendar (.ics)
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => handleExport("gpx", "gpx")}>
+                  GPX (offline navigation apps)
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
             <Button
               variant="ghost"
               size="icon"
@@ -362,9 +443,25 @@ export default function TripDetailPage({
           />
         )}
 
+        <FirstVisitTips mode={trip.mode} />
+
+        <NavButtons nav={navigation?.trip} className="mb-4" />
+
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Map */}
-          <div className="lg:col-span-2 rounded-xl overflow-hidden border border-neutral-200 bg-white" style={{ height: 420 }}>
+          <button
+            type="button"
+            onClick={() => setMapOpen((v) => !v)}
+            aria-expanded={mapOpen}
+            className="lg:hidden flex items-center justify-between rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm font-medium text-neutral-700"
+          >
+            Map
+            <ChevronDown className={`h-4 w-4 transition-transform ${mapOpen ? "rotate-180" : ""}`} />
+          </button>
+          <div
+            className={`lg:col-span-2 rounded-xl overflow-hidden border border-neutral-200 bg-white ${mapOpen ? "" : "hidden lg:block"}`}
+            style={{ height: 420 }}
+          >
             <TripMap
               startLat={trip.start_lat}
               startLng={trip.start_lng}

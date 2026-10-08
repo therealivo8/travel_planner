@@ -87,3 +87,24 @@ def log_forbidden(request: Request, *, user_id: uuid.UUID) -> None:
 def log_rate_limited(request: Request) -> None:
     """A request was rejected with 429 (rate limit exceeded)."""
     _log("rate_limit.exceeded", request)
+
+
+def log_password_reset_requested(request: Request) -> None:
+    """Someone asked for a reset link. Not tied to a user: the endpoint answers the same
+    way for unknown emails, and the log shouldn't confirm an account exists either."""
+    _log("auth.password_reset_requested", request)
+
+
+def log_password_reset_completed(request: Request, *, user_id: uuid.UUID) -> None:
+    _log("auth.password_reset_completed", request, user_id=user_id)
+    capture_message(
+        "Password reset completed", level="info", tags={"event": "auth.password_reset_completed"}
+    )
+
+
+def log_password_changed(request: Request, *, user_id: uuid.UUID) -> None:
+    _log("auth.password_changed", request, user_id=user_id)
+
+
+def log_account_deleted(request: Request, *, user_id: uuid.UUID) -> None:
+    _log("auth.account_deleted", request, user_id=user_id)

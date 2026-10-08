@@ -14,6 +14,11 @@ export interface AuthUser {
   id: string;
   email: string;
   display_name: string | null;
+  units: "imperial" | "metric";
+  home_address: string | null;
+  home_lat: number | null;
+  home_lng: number | null;
+  default_stop_minutes: number;
 }
 
 interface AuthState {
@@ -27,6 +32,8 @@ interface AuthContextValue extends AuthState {
   register: (email: string, password: string, displayName?: string) => Promise<void>;
   logout: () => Promise<void>;
   setToken: (token: string) => void;
+  /** Replace the cached profile after a settings change. */
+  setUser: (user: AuthUser) => void;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -140,6 +147,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [fetchMe]
   );
 
+  const setUser = useCallback((user: AuthUser) => {
+    setState((prev) => ({ ...prev, user }));
+  }, []);
+
   const logout = useCallback(async () => {
     try {
       await fetch(`${API_URL}/auth/logout`, { method: "POST", credentials: "include" });
@@ -153,7 +164,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ ...state, login, register, logout, setToken }}>
+    <AuthContext.Provider value={{ ...state, login, register, logout, setToken, setUser }}>
       {children}
     </AuthContext.Provider>
   );

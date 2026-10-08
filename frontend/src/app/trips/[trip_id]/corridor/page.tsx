@@ -18,7 +18,8 @@ import { GoogleMapsProvider, TripMap } from "@/components/routing";
 import { SuggestionCard } from "@/components/radius";
 import { cn } from "@/lib/utils";
 import { PageShell } from "@/components/layout/PageShell";
-import { BudgetPausedBanner, DiscoveryMeta } from "@/components/common";
+import { BudgetPausedBanner, DiscoveryMeta, StagedProgress } from "@/components/common";
+import { usePageTitle } from "@/hooks/usePageTitle";
 import { useDiscoveryQuota } from "@/hooks/useDiscoveryQuota";
 import type { Trip, CorridorSuggestion, SuggestionCategory } from "@/types";
 
@@ -40,6 +41,12 @@ const CATEGORY_COLORS: Record<SuggestionCategory, string> = {
 
 const DETOUR_OPTIONS = [5, 10, 15, 30, 60];
 
+const CORRIDOR_STAGES = [
+  "Sampling points along your route…",
+  "Searching places…",
+  "Checking detour times…",
+];
+
 export default function CorridorPage({
   params,
 }: {
@@ -47,6 +54,7 @@ export default function CorridorPage({
 }) {
   const { trip_id } = use(params);
   const router = useRouter();
+  usePageTitle("Stops along the way");
 
   const [trip, setTrip] = useState<Trip | null>(null);
   const [suggestions, setSuggestions] = useState<CorridorSuggestion[]>([]);
@@ -272,9 +280,12 @@ export default function CorridorPage({
       {/* Suggestion list */}
       <div className="flex-1 overflow-y-auto flex flex-col gap-2 pr-1">
         {discovering ? (
-          Array.from({ length: 6 }).map((_, i) => (
-            <Skeleton key={i} className="h-24 w-full rounded-xl" />
-          ))
+          <>
+            <StagedProgress stages={CORRIDOR_STAGES} />
+            {Array.from({ length: 6 }).map((_, i) => (
+              <Skeleton key={i} className="h-24 w-full rounded-xl" />
+            ))}
+          </>
         ) : visibleSuggestions.length === 0 ? (
           <p className="text-sm text-neutral-400 text-center py-8">
             No stops found within {maxDetourMinutes} min detour.
@@ -318,7 +329,7 @@ export default function CorridorPage({
           <div className="max-w-6xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between gap-3">
             <div className="flex items-center gap-3 min-w-0">
               <Button variant="ghost" size="icon" asChild>
-                <Link href={`/trips/${trip_id}`}>
+                <Link href={`/trips/${trip_id}`} aria-label="Back to trip">
                   <ArrowLeft className="h-4 w-4" />
                 </Link>
               </Button>

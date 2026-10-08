@@ -10,7 +10,9 @@ interface TripCardProps {
   mode: TripMode;
   status: TripStatus;
   coverImage?: string;
-  distanceMi?: number;
+  /** Pre-formatted distance, e.g. { value: 412, unit: "km" }. */
+  distance?: { value: number; unit: string };
+  isExample?: boolean;
   driveTimeMin?: number;
   stopCount?: number;
   updatedAt?: Date;
@@ -46,7 +48,8 @@ export function TripCard({
   mode,
   status,
   coverImage,
-  distanceMi,
+  distance,
+  isExample,
   driveTimeMin,
   stopCount,
   updatedAt,
@@ -76,9 +79,12 @@ export function TripCard({
           <Badge variant="outline" className="bg-white/90 backdrop-blur-sm text-xs">
             {modeLabel[mode]}
           </Badge>
+          {isExample && (
+            <Badge className="bg-accent-400 text-neutral-900 text-xs">Example</Badge>
+          )}
         </div>
         {/* 3-dot menu */}
-        <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+        <div className="absolute top-2 right-2 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
           <Button
             variant="ghost"
             size="icon"
@@ -105,8 +111,8 @@ export function TripCard({
           {driveTimeMin !== undefined && (
             <StatPill icon="🕐" value={`${hours}h ${minutes}min`} />
           )}
-          {distanceMi !== undefined && (
-            <StatPill icon="📍" value={distanceMi.toString()} unit="mi" />
+          {distance !== undefined && (
+            <StatPill icon="📍" value={distance.value.toString()} unit={distance.unit} />
           )}
           {stopCount !== undefined && (
             <StatPill icon="🚏" value={stopCount.toString()} unit="stops" />

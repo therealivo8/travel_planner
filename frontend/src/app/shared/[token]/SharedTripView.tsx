@@ -1,25 +1,17 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { ArrowRight, Clock, Ruler, CalendarDays, MapPin } from "lucide-react";
-import type { PublicTrip, ItineraryDay } from "@/types";
+import { formatDistance, formatDuration } from "@/lib/format";
+import { NavButtons } from "@/components/logistics/NavButtons";
+import type { PublicTrip, ItineraryDay, TripNavigation } from "@/types";
 
 interface SharedTripViewProps {
   trip: PublicTrip;
+  token: string;
 }
 
-function formatDuration(seconds: number | null): string {
-  if (seconds == null) return "—";
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  return h > 0 ? `${h}h ${m}m` : `${m}m`;
-}
-
-function formatDistance(meters: number | null): string {
-  if (meters == null) return "—";
-  return `${(meters / 1609.34).toFixed(0)} mi`;
-}
-
-function DaySection({ day }: { day: ItineraryDay }) {
+function DaySection({ day, nav }: { day: ItineraryDay; nav?: TripNavigation["days"][string] }) {
   return (
     <div className="border border-neutral-200 rounded-xl overflow-hidden">
       <div className="bg-neutral-50 px-4 py-3 flex items-center gap-3 border-b border-neutral-200">
@@ -36,6 +28,9 @@ function DaySection({ day }: { day: ItineraryDay }) {
         <p className="px-4 py-2 text-xs text-neutral-500 italic border-b border-neutral-100">
           {day.notes}
         </p>
+      )}
+      {nav && nav.google.length > 0 && (
+        <NavButtons nav={nav} className="px-4 py-2 border-b border-neutral-100" />
       )}
       <div className="divide-y divide-neutral-100">
         {day.waypoints.length === 0 && (
@@ -60,7 +55,22 @@ function DaySection({ day }: { day: ItineraryDay }) {
   );
 }
 
-export function SharedTripView({ trip }: SharedTripViewProps) {
+export function SharedTripView({ trip, token }: SharedTripViewProps) {
+  const [navigation, setNavigation] = useState<TripNavigation>();
+  useEffect(() => {
+    let cancelled = false;
+    // Enhancement only: the shared page works without the links.
+    fetch(`/api/shared/${encodeURIComponent(token)}/navigation`)
+      .then((r) => (r.ok ? (r.json() as Promise<TripNavigation>) : undefined))
+      .then((nav) => {
+        if (!cancelled) setNavigation(nav);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
+
   const sortedDays = [...(trip.days ?? [])].sort((a, b) => a.day_number - b.day_number);
 
   return (
@@ -93,7 +103,7 @@ export function SharedTripView({ trip }: SharedTripViewProps) {
         {/* Stats */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {[
-            { icon: Ruler, label: "Distance", value: formatDistance(trip.total_distance_meters) },
+            { icon: Ruler, label: "Distance", value: formatDistance(trip.total_distance_meters, trip.units) },
             { icon: Clock, label: "Drive time", value: formatDuration(trip.total_drive_seconds) },
             { icon: CalendarDays, label: "Days", value: sortedDays.length > 0 ? String(sortedDays.length) : "—" },
             { icon: MapPin, label: "Stops", value: String(trip.waypoints.length) },
@@ -138,7 +148,7 @@ export function SharedTripView({ trip }: SharedTripViewProps) {
             </p>
             <div className="flex flex-col gap-3">
               {sortedDays.map((day) => (
-                <DaySection key={day.id} day={day} />
+                <DaySection key={day.id} day={day} nav={navigation?.days[day.id]} />
               ))}
             </div>
           </div>

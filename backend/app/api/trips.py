@@ -155,6 +155,16 @@ async def duplicate_trip(
         notes=trip.notes,
         start_date=trip.start_date,
         cover_image_url=trip.cover_image_url,
+        # The saved route is copied too, so duplicating (e.g. the example trip) needs no
+        # new Directions call.
+        total_distance_meters=trip.total_distance_meters,
+        total_drive_seconds=trip.total_drive_seconds,
+        route_polyline=trip.route_polyline,
+        vehicle_mpg=trip.vehicle_mpg,
+        fuel_price_per_unit=trip.fuel_price_per_unit,
+        budget_total=trip.budget_total,
+        currency=trip.currency,
+        timezone=trip.timezone,
     )
     db.add(new_trip)
     await db.flush()
@@ -170,6 +180,8 @@ async def duplicate_trip(
             stop_duration_minutes=wp.stop_duration_minutes,
             notes=wp.notes,
             place_id=wp.place_id,
+            drive_seconds_from_prev=wp.drive_seconds_from_prev,
+            distance_meters_from_prev=wp.distance_meters_from_prev,
         ))
 
     await db.commit()

@@ -40,7 +40,7 @@ export function TripActionsMenu({ tripId, onDuplicate, onDelete, onArchive }: Tr
     >
       <button
         onClick={(e) => { e.preventDefault(); e.stopPropagation(); setOpen((v) => !v); }}
-        className="h-8 w-8 rounded-lg flex items-center justify-center bg-white/90 backdrop-blur-sm shadow-sm border border-neutral-200 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-white"
+        className="h-8 w-8 rounded-lg flex items-center justify-center bg-white/90 backdrop-blur-sm shadow-sm border border-neutral-200 sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100 transition-opacity hover:bg-white"
         aria-label="Trip options"
       >
         <MoreVertical className="h-4 w-4 text-neutral-600" />

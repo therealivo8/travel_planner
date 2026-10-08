@@ -42,6 +42,8 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { toast } from "sonner";
+import { useConfirm } from "@/components/common/ConfirmProvider";
+import { usePageTitle } from "@/hooks/usePageTitle";
 import { useAuth } from "@/context/AuthContext";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -56,7 +58,16 @@ import {
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { PageShell } from "@/components/layout/PageShell";
-import type { Itinerary, ItineraryDay, ItineraryWaypoint } from "@/types";
+import { WeatherChip } from "@/components/logistics/WeatherChip";
+import { NavButtons } from "@/components/logistics/NavButtons";
+import { useDayWeather, useTripNavigation } from "@/hooks/useTripExtras";
+import type {
+  DayNavigation,
+  DayWeather,
+  Itinerary,
+  ItineraryDay,
+  ItineraryWaypoint,
+} from "@/types";
 
 // ── constants ──────────────────────────────────────────────────────────────
 
@@ -300,6 +311,8 @@ function SortableWaypointChip({
 interface DayColumnProps {
   day: ItineraryDay;
   allDays: ItineraryDay[];
+  weather?: DayWeather;
+  nav?: DayNavigation;
   optimizing: boolean;
   onDelete: (dayId: string) => void;
   onUpdateTitle: (dayId: string, title: string) => void;
@@ -315,6 +328,8 @@ interface DayColumnProps {
 function DayColumn({
   day,
   allDays,
+  weather,
+  nav,
   optimizing,
   onDelete,
   onUpdateTitle,
@@ -343,7 +358,7 @@ function DayColumn({
   const overBudget = totalMinutes > DAY_BUDGET_MINUTES;
 
   return (
-    <div className="flex flex-col min-w-[240px] w-[240px] bg-neutral-100 rounded-xl p-3 gap-2">
+    <div className="flex flex-col min-w-[240px] w-[240px] snap-start bg-neutral-100 rounded-xl p-3 gap-2">
       {/* Day header */}
       <div className="flex items-center justify-between gap-1">
         <div className="flex items-center gap-1.5 min-w-0">
@@ -419,6 +434,8 @@ function DayColumn({
         />
       </label>
 
+      <WeatherChip date={day.date} weather={weather} />
+
       {showNotes && (
         <Textarea
           value={notesDraft}
@@ -461,6 +478,8 @@ function DayColumn({
           )}
         </div>
       </SortableContext>
+
+      <NavButtons nav={nav} />
 
       {day.waypoints.length > 0 && (
         <p
@@ -557,6 +576,8 @@ function UnscheduledColumn({
 export default function ItineraryPage({ params }: { params: Promise<{ trip_id: string }> }) {
   const { trip_id } = use(params);
   const router = useRouter();
+  const ask = useConfirm();
+  usePageTitle("Itinerary");
   const { user, isLoading: authLoading } = useAuth();
 
   const [itinerary, setItinerary] = useState<Itinerary | null>(null);
@@ -574,6 +595,19 @@ export default function ItineraryPage({ params }: { params: Promise<{ trip_id: s
     useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } }),
     // Space/Enter picks a chip up, arrows move it, Space drops it.
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
+
+  // Weather depends on each day's date and last stop; nav links on the order of every stop.
+  const days = itinerary?.days;
+  const weather = useDayWeather(
+    trip_id,
+    Boolean(days?.length),
+    (days ?? []).map((d) => `${d.id}:${d.date}:${d.waypoints.at(-1)?.id}`).join("|")
+  );
+  const navigation = useTripNavigation(
+    trip_id,
+    Boolean(days?.length),
+    (days ?? []).map((d) => `${d.id}:${d.waypoints.map((w) => w.id).join(",")}`).join("|")
   );
 
   const loadItinerary = useCallback(async () => {
@@ -731,7 +765,13 @@ export default function ItineraryPage({ params }: { params: Promise<{ trip_id: s
 
   async function handleDeleteDay(dayId: string) {
     if (!itinerary) return;
-    if (!confirm("Delete this day? Its waypoints will become unscheduled.")) return;
+    const ok = await ask({
+      title: "Delete this day?",
+      description: "Its stops will become unscheduled.",
+      confirmLabel: "Delete day",
+      destructive: true,
+    });
+    if (!ok) return;
     try {
       await api.delete(`/trips/${trip_id}/itinerary/days/${dayId}`);
       await loadItinerary();
@@ -972,7 +1012,7 @@ export default function ItineraryPage({ params }: { params: Promise<{ trip_id: s
         <div className="max-w-full px-4 sm:px-6 py-4 flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <Button variant="ghost" size="icon" asChild>
-              <Link href={`/trips/${trip_id}`}>
+              <Link href={`/trips/${trip_id}`} aria-label="Back to trip">
                 <ArrowLeft className="h-4 w-4" />
               </Link>
             </Button>
@@ -1021,13 +1061,15 @@ export default function ItineraryPage({ params }: { params: Promise<{ trip_id: s
           />
 
           {/* Right: day columns */}
-          <div className="flex-1 overflow-x-auto p-4">
+          <div className="flex-1 overflow-x-auto p-4 snap-x snap-mandatory sm:snap-none">
             <div className="flex gap-4 h-full">
               {itinerary.days.map((day) => (
                 <DayColumn
                   key={day.id}
                   day={day}
                   allDays={itinerary.days}
+                  weather={weather?.[day.id]}
+                  nav={navigation?.days[day.id]}
                   optimizing={optimizingDayId === day.id}
                   onDelete={handleDeleteDay}
                   onUpdateTitle={handleUpdateTitle}
@@ -1082,6 +1124,18 @@ export default function ItineraryPage({ params }: { params: Promise<{ trip_id: s
             {activeWaypoint && <WaypointChip waypoint={activeWaypoint} isOverlay />}
           </DragOverlay>
         </DndContext>
+        {weather && Object.keys(weather).length > 0 && (
+          <p className="shrink-0 px-4 py-2 text-center text-[11px] text-neutral-400">
+            <a
+              href="https://open-meteo.com/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:underline"
+            >
+              Weather data by Open-Meteo.com
+            </a>
+          </p>
+        )}
       </div>
     </PageShell>
   );

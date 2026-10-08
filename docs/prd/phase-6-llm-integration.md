@@ -1,5 +1,7 @@
 # PRD — Phase 6: LLM Integration
 
+> **Superseded by [Phase 18](./phase-18-lean-ai-layer.md).** Features 1, 2 and 4 are re-scoped there with cost controls; feature 3 (auto-schedule) is dropped; feature 5 (chat assistant, `trip_conversations` tables) is deferred. Do not build from this document.
+
 ## Overview
 Add an AI layer powered by Claude (Anthropic) that enhances every stage of trip planning: natural-language trip creation, smart waypoint suggestions, auto-generated itinerary scheduling, and a trip narrative generator. The LLM acts as an assistant layered on top of the existing deterministic planning system — it suggests, the user decides.
 

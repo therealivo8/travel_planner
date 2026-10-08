@@ -45,6 +45,8 @@ work already in flight:
 
 ## Part A: AI Suggest-Stops
 
+> **Superseded by [Phase 18](./phase-18-lean-ai-layer.md), Feature B.** It keeps the same idea but restricts Claude to the cached candidate pool and makes no Google calls. Parts B and C of this phase are unaffected.
+
 ### Model selection
 `phase-6-llm-integration.md:28,252` names `claude-sonnet-4-6` and `claude-opus-4-8`. **Those IDs must
 be re-verified against current Anthropic model IDs before implementation** — do not copy them

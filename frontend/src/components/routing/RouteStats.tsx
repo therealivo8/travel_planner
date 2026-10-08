@@ -1,26 +1,14 @@
 import { Clock, Milestone } from "lucide-react";
+import { formatDistance, formatDuration } from "@/lib/format";
+import { useUnits } from "@/hooks/useUnits";
 
 interface Props {
   totalDistanceMeters: number | null;
   totalDriveSeconds: number | null;
 }
 
-function formatDistance(meters: number): string {
-  const miles = meters / 1609.34;
-  return miles >= 10
-    ? `${Math.round(miles)} mi`
-    : `${miles.toFixed(1)} mi`;
-}
-
-function formatDuration(seconds: number): string {
-  const h = Math.floor(seconds / 3600);
-  const m = Math.round((seconds % 3600) / 60);
-  if (h === 0) return `${m} min`;
-  if (m === 0) return `${h} h`;
-  return `${h} h ${m} min`;
-}
-
 export function RouteStats({ totalDistanceMeters, totalDriveSeconds }: Props) {
+  const units = useUnits();
   if (!totalDistanceMeters && !totalDriveSeconds) return null;
 
   return (
@@ -28,7 +16,7 @@ export function RouteStats({ totalDistanceMeters, totalDriveSeconds }: Props) {
       {totalDistanceMeters != null && (
         <div className="flex items-center gap-1.5 text-sm font-medium text-neutral-700">
           <Milestone className="h-4 w-4 text-primary-500" />
-          <span>{formatDistance(totalDistanceMeters)}</span>
+          <span>{formatDistance(totalDistanceMeters, units)}</span>
         </div>
       )}
       {totalDriveSeconds != null && (

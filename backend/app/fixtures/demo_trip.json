@@ -1,0 +1,114 @@
+{
+  "_note": "Hand-assembled example. Geometry is a simplified polyline through the stops and drive times are approximate; re-capture with backend/scripts/capture_demo_trip.py for a real Directions result. Contains only user-level data (addresses, coordinates) - no Google names, ratings or place IDs.",
+  "title": "Pacific Coast Highway: SF to LA (example)",
+  "mode": "point_to_point",
+  "start_address": "San Francisco, CA, USA",
+  "start_lat": 37.7749,
+  "start_lng": -122.4194,
+  "end_address": "Los Angeles, CA, USA",
+  "end_lat": 34.0522,
+  "end_lng": -118.2437,
+  "notes": "An example trip so you can explore the planner without using any map quota. Delete it or duplicate it to make it your own.",
+  "total_distance_meters": 798000,
+  "total_drive_seconds": 36300,
+  "route_polyline": "c|peFf`ejVrx{@nx@~n`BsioAzubA{pUvao@z@j`eCsrnCn}uFwy}GbclA_krDkcDsugB",
+  "waypoints": [
+    {
+      "label": "Half Moon Bay, CA",
+      "address": "Half Moon Bay, CA, USA",
+      "lat": 37.4636,
+      "lng": -122.4286,
+      "drive_seconds_from_prev": 2700,
+      "distance_meters_from_prev": 41000,
+      "stop_duration_minutes": 45,
+      "scheduled_arrival_time": "09:30"
+    },
+    {
+      "label": "Santa Cruz Beach Boardwalk",
+      "address": "400 Beach St, Santa Cruz, CA, USA",
+      "lat": 36.9644,
+      "lng": -122.0173,
+      "drive_seconds_from_prev": 4200,
+      "distance_meters_from_prev": 80000,
+      "stop_duration_minutes": 90,
+      "scheduled_arrival_time": "11:30"
+    },
+    {
+      "label": "Cannery Row, Monterey",
+      "address": "Cannery Row, Monterey, CA, USA",
+      "lat": 36.6177,
+      "lng": -121.9018,
+      "drive_seconds_from_prev": 3000,
+      "distance_meters_from_prev": 70000,
+      "stop_duration_minutes": 90,
+      "scheduled_arrival_time": "14:30"
+    },
+    {
+      "label": "Bixby Creek Bridge",
+      "address": "Bixby Creek Bridge, Big Sur, CA, USA",
+      "lat": 36.3715,
+      "lng": -121.9021,
+      "drive_seconds_from_prev": 2100,
+      "distance_meters_from_prev": 42000,
+      "stop_duration_minutes": 30,
+      "scheduled_arrival_time": "10:00"
+    },
+    {
+      "label": "Hearst Castle",
+      "address": "750 Hearst Castle Rd, San Simeon, CA, USA",
+      "lat": 35.6852,
+      "lng": -121.1668,
+      "drive_seconds_from_prev": 6000,
+      "distance_meters_from_prev": 125000,
+      "stop_duration_minutes": 120,
+      "scheduled_arrival_time": "12:30"
+    },
+    {
+      "label": "Santa Barbara Courthouse",
+      "address": "1100 Anacapa St, Santa Barbara, CA, USA",
+      "lat": 34.4208,
+      "lng": -119.6982,
+      "drive_seconds_from_prev": 9900,
+      "distance_meters_from_prev": 260000,
+      "stop_duration_minutes": 90,
+      "scheduled_arrival_time": "10:30"
+    },
+    {
+      "label": "Malibu Pier",
+      "address": "23000 Pacific Coast Hwy, Malibu, CA, USA",
+      "lat": 34.0259,
+      "lng": -118.7798,
+      "drive_seconds_from_prev": 5400,
+      "distance_meters_from_prev": 125000,
+      "stop_duration_minutes": 60,
+      "scheduled_arrival_time": "14:00"
+    }
+  ],
+  "days": [
+    {
+      "title": "San Francisco to Monterey",
+      "notes": "Easy coastal day with beach stops.",
+      "waypoints": [
+        0,
+        1,
+        2
+      ]
+    },
+    {
+      "title": "Big Sur and Hearst Castle",
+      "notes": "Fill the tank in Monterey - few stations on this stretch.",
+      "waypoints": [
+        3,
+        4
+      ]
+    },
+    {
+      "title": "Santa Barbara to Los Angeles",
+      "notes": null,
+      "waypoints": [
+        5,
+        6
+      ]
+    }
+  ]
+}

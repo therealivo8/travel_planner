@@ -3,14 +3,20 @@
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
+import { useConfirm } from "@/components/common/ConfirmProvider";
 import { Plus, MapPin } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TripCard } from "@/components/trips";
+import { EmptyState } from "@/components/common";
 import { TripActionsMenu } from "@/components/trips/TripActionsMenu";
 import { PageShell } from "@/components/layout/PageShell";
+import { distanceParts } from "@/lib/format";
+import { useUnits } from "@/hooks/useUnits";
+import { usePageTitle } from "@/hooks/usePageTitle";
 import type { PaginatedTrips, TripListItem, TripStatus } from "@/types";
 
 type SortKey = "created_at" | "updated_at" | "start_date";
@@ -28,10 +34,6 @@ const SORT_OPTIONS: { label: string; value: SortKey }[] = [
   { label: "Upcoming", value: "start_date" },
 ];
 
-function distanceMi(meters: number | null): number | undefined {
-  return meters != null ? Math.round((meters / 1609.34) * 10) / 10 : undefined;
-}
-
 function driveMin(seconds: number | null): number | undefined {
   return seconds != null ? Math.round(seconds / 60) : undefined;
 }
@@ -39,6 +41,9 @@ function driveMin(seconds: number | null): number | undefined {
 export default function TripsPage() {
   const { user, isLoading: authLoading } = useAuth();
   const router = useRouter();
+  const units = useUnits();
+  const ask = useConfirm();
+  usePageTitle("My trips");
   const [trips, setTrips] = useState<TripListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -74,17 +79,23 @@ export default function TripsPage() {
       await api.post(`/trips/${tripId}/duplicate`);
       fetchTrips(statusFilter, sort);
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to duplicate trip");
+      toast.error(err instanceof Error ? err.message : "Failed to duplicate trip");
     }
   }
 
   async function handleDelete(tripId: string) {
-    if (!confirm("Delete this trip? This cannot be undone.")) return;
+    const ok = await ask({
+      title: "Delete this trip?",
+      description: "The trip, its stops and its itinerary will be permanently removed.",
+      confirmLabel: "Delete trip",
+      destructive: true,
+    });
+    if (!ok) return;
     try {
       await api.delete(`/trips/${tripId}`);
       setTrips((prev) => prev.filter((t) => t.id !== tripId));
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to delete trip");
+      toast.error(err instanceof Error ? err.message : "Failed to delete trip");
     }
   }
 
@@ -93,7 +104,7 @@ export default function TripsPage() {
       await api.patch(`/trips/${tripId}`, { status: "completed" });
       fetchTrips(statusFilter, sort);
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to archive trip");
+      toast.error(err instanceof Error ? err.message : "Failed to archive trip");
     }
   }
 
@@ -171,28 +182,35 @@ export default function TripsPage() {
           </div>
         )}
 
-        {!loading && !error && trips.length === 0 && (
-          <div className="text-center py-20">
-            <div className="flex justify-center mb-4">
-              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-neutral-100">
-                <MapPin className="h-6 w-6 text-neutral-400" />
-              </div>
-            </div>
-            <h2 className="text-lg font-semibold text-neutral-900 mb-2">
-              {statusFilter === "all" ? "No trips yet" : `No ${statusFilter} trips`}
-            </h2>
-            <p className="text-sm text-neutral-500 mb-6">
-              {statusFilter === "all"
-                ? "Plan your first road trip to get started."
-                : "Try a different filter or create a new trip."}
-            </p>
-            <Button asChild>
-              <Link href="/trips/new">
-                <Plus className="h-4 w-4 mr-1.5" />
-                New Trip
+        {!loading && !error && trips.length === 0 && statusFilter === "all" && (
+          <EmptyState
+            icon={<MapPin className="h-6 w-6 text-neutral-400" />}
+            heading="Plan your first road trip"
+            subtext="Pick how you'd like to start."
+          >
+            <div className="grid w-full max-w-md grid-cols-1 gap-3 sm:grid-cols-2">
+              <Link
+                href="/trips/new?mode=point_to_point"
+                className="rounded-xl border-2 border-neutral-200 p-4 text-left hover:border-primary-500"
+              >
+                <p className="text-sm font-medium text-neutral-900">Plan a route (A → B)</p>
+                <p className="mt-1 text-xs text-neutral-500">Add stops between two places.</p>
               </Link>
-            </Button>
-          </div>
+              <Link
+                href="/trips/new?mode=radius"
+                className="rounded-xl border-2 border-neutral-200 p-4 text-left hover:border-primary-500"
+              >
+                <p className="text-sm font-medium text-neutral-900">Explore around me</p>
+                <p className="mt-1 text-xs text-neutral-500">Find places within a drive time.</p>
+              </Link>
+            </div>
+          </EmptyState>
+        )}
+
+        {!loading && !error && trips.length === 0 && statusFilter !== "all" && (
+          <p className="py-20 text-center text-sm text-neutral-500">
+            No {statusFilter} trips. Try a different filter.
+          </p>
         )}
 
         {!loading && !error && trips.length > 0 && (
@@ -205,7 +223,12 @@ export default function TripsPage() {
                     mode={trip.mode}
                     status={trip.status}
                     coverImage={trip.cover_image_url ?? undefined}
-                    distanceMi={distanceMi(trip.total_distance_meters)}
+                    distance={
+                      trip.total_distance_meters != null
+                        ? distanceParts(trip.total_distance_meters, units)
+                        : undefined
+                    }
+                    isExample={trip.is_example}
                     driveTimeMin={driveMin(trip.total_drive_seconds)}
                     updatedAt={new Date(trip.updated_at)}
                   />

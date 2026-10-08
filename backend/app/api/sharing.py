@@ -11,6 +11,7 @@ from app.core.deps import CurrentUser
 from app.core.limiter import limiter
 from app.db.session import get_db
 from app.models.trip import ItineraryDay, Trip
+from app.models.user import User
 from app.schemas.trip import (
     ItineraryDayOut,
     ItineraryWaypointOut,
@@ -100,6 +101,9 @@ async def get_shared_trip(
 
     sorted_wps = sorted(trip.waypoints, key=lambda w: w.position)
     sorted_days = sorted(trip.itinerary_days, key=lambda d: d.day_number)
+    owner_units = (
+        await db.execute(select(User.units).where(User.id == trip.user_id))
+    ).scalar_one()
 
     days_out = [
         ItineraryDayOut(
@@ -142,6 +146,7 @@ async def get_shared_trip(
         route_polyline=trip.route_polyline,
         start_date=trip.start_date,
         cover_image_url=trip.cover_image_url,
+        units=owner_units,
         waypoints=[WaypointOut.model_validate(w) for w in sorted_wps],
         days=days_out,
     )

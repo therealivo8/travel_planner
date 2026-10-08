@@ -24,6 +24,12 @@ export interface Trip {
   is_public: boolean;
   start_date: string | null;
   cover_image_url: string | null;
+  vehicle_mpg: number;
+  fuel_price_per_unit: number;
+  budget_total: number | null;
+  currency: string;
+  timezone: string;
+  is_example: boolean;
   created_at: string;
   updated_at: string;
   waypoints: Waypoint[];
@@ -35,6 +41,7 @@ export interface TripListItem {
   total_distance_meters: number | null;
   total_drive_seconds: number | null;
   cover_image_url: string | null;
+  is_example?: boolean;
   start_date: string | null;
   is_public: boolean;
   mode: TripMode;
@@ -109,6 +116,7 @@ export interface PublicTrip {
   route_polyline: string | null;
   start_date: string | null;
   cover_image_url: string | null;
+  units: "imperial" | "metric";
   waypoints: Waypoint[];
   days: ItineraryDay[];
 }
@@ -262,4 +270,76 @@ export interface ItineraryBuildOut {
 export interface HealthResponse {
   status: string;
   db: string;
+}
+
+// ── Phase 16: trip logistics ────────────────────────────────────────────────
+
+export type ExpenseCategory = "fuel" | "lodging" | "food" | "activities" | "other";
+
+export interface Expense {
+  id: string;
+  trip_id: string;
+  itinerary_day_id: string | null;
+  category: ExpenseCategory;
+  amount: number;
+  note: string | null;
+  spent_on: string;
+  created_at: string;
+}
+
+export interface Budget {
+  currency: string;
+  vehicle_mpg: number;
+  fuel_price_per_unit: number;
+  distance_miles: number;
+  estimated_fuel: number;
+  fuel_by_day: Record<string, number>;
+  budget_total: number | null;
+  spent_by_category: Record<ExpenseCategory, number>;
+  spent_total: number;
+  remaining: number | null;
+}
+
+/** Temperatures are Celsius; convert for display. */
+export interface DayWeather {
+  hi: number | null;
+  lo: number | null;
+  precip_pct: number | null;
+  code: number | null;
+  sunrise: string | null;
+  sunset: string | null;
+  after_dark: boolean;
+}
+
+export interface PackingItem {
+  id: string;
+  label: string;
+  category: string;
+  packed: boolean;
+  position: number;
+}
+
+export interface PackingTemplate {
+  name: string;
+  item_count: number;
+}
+
+export interface PackingSuggestion {
+  template: string;
+  reason: string;
+}
+
+export interface NavLink {
+  label: string;
+  url: string;
+}
+
+export interface DayNavigation {
+  google: NavLink[];
+  apple: NavLink[];
+}
+
+export interface TripNavigation {
+  trip: DayNavigation;
+  days: Record<string, DayNavigation>;
 }

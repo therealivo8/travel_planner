@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import type { PublicTrip } from "@/types";
+import { formatDistance } from "@/lib/format";
 import { SharedTripView } from "./SharedTripView";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -27,13 +28,13 @@ export async function generateMetadata({
     return { title: "Trip not found" };
   }
 
-  const distMi = trip.total_distance_meters
-    ? (trip.total_distance_meters / 1609.34).toFixed(0)
+  const distance = trip.total_distance_meters
+    ? formatDistance(trip.total_distance_meters, trip.units)
     : null;
   const description = [
     `From ${trip.start_address}`,
     trip.end_address ? `to ${trip.end_address}` : null,
-    distMi ? `• ${distMi} mi` : null,
+    distance ? `• ${distance}` : null,
   ]
     .filter(Boolean)
     .join(" ");
@@ -66,5 +67,5 @@ export default async function SharedTripPage({
 
   if (!trip) notFound();
 
-  return <SharedTripView trip={trip} />;
+  return <SharedTripView trip={trip} token={token} />;
 }

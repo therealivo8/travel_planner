@@ -11,9 +11,10 @@ interface EmptyStateProps {
     onClick: () => void;
   };
   className?: string;
+  children?: React.ReactNode;
 }
 
-export function EmptyState({ icon, heading, subtext, cta, className }: EmptyStateProps) {
+export function EmptyState({ icon, heading, subtext, cta, className, children }: EmptyStateProps) {
   return (
     <div className={cn("flex flex-col items-center justify-center text-center py-16 px-8", className)}>
       {icon && (
@@ -23,6 +24,7 @@ export function EmptyState({ icon, heading, subtext, cta, className }: EmptyStat
       )}
       <h3 className="text-lg font-semibold text-neutral-900 mb-1">{heading}</h3>
       {subtext && <p className="text-sm text-neutral-500 max-w-sm mb-6">{subtext}</p>}
+      {children}
       {cta && (
         <Button onClick={cta.onClick}>{cta.label}</Button>
       )}

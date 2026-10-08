@@ -19,7 +19,8 @@ import { GoogleMapsProvider, TripMap, IsochroneLayer } from "@/components/routin
 import { SuggestionCard } from "@/components/radius";
 import { cn } from "@/lib/utils";
 import { PageShell } from "@/components/layout/PageShell";
-import { BudgetPausedBanner, DiscoveryMeta } from "@/components/common";
+import { BudgetPausedBanner, DiscoveryMeta, StagedProgress } from "@/components/common";
+import { usePageTitle } from "@/hooks/usePageTitle";
 import { useDiscoveryQuota } from "@/hooks/useDiscoveryQuota";
 import type { Trip, RadiusSuggestion, GeoJSONPolygon, SuggestionCategory } from "@/types";
 
@@ -39,6 +40,12 @@ const CATEGORY_COLORS: Record<SuggestionCategory, string> = {
   other: "#6B7280",
 };
 
+const RADIUS_STAGES = [
+  "Finding drive-time area…",
+  "Searching places…",
+  "Checking drive times…",
+];
+
 export default function DiscoverPage({
   params,
 }: {
@@ -46,6 +53,7 @@ export default function DiscoverPage({
 }) {
   const { trip_id } = use(params);
   const router = useRouter();
+  usePageTitle("Discover places");
 
   const [trip, setTrip] = useState<Trip | null>(null);
   const [suggestions, setSuggestions] = useState<RadiusSuggestion[]>([]);
@@ -268,9 +276,12 @@ export default function DiscoverPage({
       {/* Suggestion list */}
       <div className="flex-1 overflow-y-auto flex flex-col gap-2 pr-1">
         {discovering ? (
-          Array.from({ length: 6 }).map((_, i) => (
-            <Skeleton key={i} className="h-24 w-full rounded-xl" />
-          ))
+          <>
+            <StagedProgress stages={RADIUS_STAGES} />
+            {Array.from({ length: 6 }).map((_, i) => (
+              <Skeleton key={i} className="h-24 w-full rounded-xl" />
+            ))}
+          </>
         ) : visibleSuggestions.length === 0 ? (
           <p className="text-sm text-neutral-400 text-center py-8">No places found.</p>
         ) : (
@@ -286,7 +297,7 @@ export default function DiscoverPage({
       </div>
 
       {/* Build route / itinerary CTA */}
-      <div className="pt-2 border-t border-neutral-100 flex flex-col gap-2">
+      <div className="pt-2 border-t border-neutral-100 flex flex-col gap-2 sticky bottom-0 bg-white pb-2">
         {selectedIds.length > 0 && (
           <p className="text-xs text-neutral-500">
             {selectedIds.length} stop{selectedIds.length !== 1 ? "s" : ""} selected
@@ -335,7 +346,7 @@ export default function DiscoverPage({
           <div className="max-w-6xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between gap-3">
             <div className="flex items-center gap-3 min-w-0">
               <Button variant="ghost" size="icon" asChild>
-                <Link href="/trips">
+                <Link href="/trips" aria-label="Back to trips">
                   <ArrowLeft className="h-4 w-4" />
                 </Link>
               </Button>

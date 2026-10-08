@@ -25,6 +25,11 @@ export async function POST() {
 
   const data = await upstream.text();
 
+  // A refresh token the backend rejects with 401 (revoked by a password change, expired) is dead
+  // for good. Leaving the cookie behind makes proxy.ts think the browser is signed in, so
+  // /login bounces to /trips and /trips bounces back to /login forever.
+  if (upstream.status === 401 && refreshToken) jar.delete("refresh_token");
+
   const setCookieHeader = upstream.headers.get("set-cookie");
   if (setCookieHeader) {
     const { name, value, attrs } = parseSetCookie(setCookieHeader);

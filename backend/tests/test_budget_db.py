@@ -8,64 +8,26 @@ Run against a throwaway database:
 import asyncio
 import os
 import uuid
-from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import httpx
 import pytest
-import pytest_asyncio
 from sqlalchemy import select, text, update
 
 from app.config import settings
 from app.core import budget, cache, cleanup
-from app.core.security import create_access_token, hash_password
 from app.db.session import AsyncSessionLocal
-from app.main import app
 from app.models.budget import DiscoveryCache, IsochroneCache
 from app.models.trip import CorridorSuggestion, RadiusSuggestion, Trip
 from app.models.user import User
 from app.services import corridor as corridor_svc
 from app.services import radius as radius_svc
+from tests.helpers import auth, make_user
 
 pytestmark = pytest.mark.skipif(
     os.environ.get("RUN_DB_TESTS") != "1", reason="set RUN_DB_TESTS=1 with a migrated DATABASE_URL"
 )
-
-
-@pytest_asyncio.fixture(autouse=True)
-async def clean_db(monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[None]:
-    async with AsyncSessionLocal() as db:
-        await db.execute(
-            text(
-                "TRUNCATE api_usage_daily, user_action_daily, isochrone_cache, "
-                "discovery_cache, users CASCADE"
-            )
-        )
-        await db.commit()
-    budget._warned.clear()
-    monkeypatch.setattr(settings, "api_budgets", dict(settings.api_budgets))
-    monkeypatch.setattr(settings, "user_daily_quotas", dict(settings.user_daily_quotas))
-    yield
-
-
-async def make_user(email: str = "u@example.com") -> User:
-    async with AsyncSessionLocal() as db:
-        user = User(email=email, hashed_password=hash_password("pw"))
-        db.add(user)
-        await db.commit()
-        return user
-
-
-def auth(user: User) -> dict[str, str]:
-    return {"Authorization": f"Bearer {create_access_token(str(user.id))}"}
-
-
-@pytest_asyncio.fixture
-async def client() -> AsyncIterator[httpx.AsyncClient]:
-    transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
-        yield c
 
 
 async def total(sku: str) -> int:

@@ -8,6 +8,7 @@ import { z } from "zod";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { usePageTitle } from "@/hooks/usePageTitle";
 
 const schema = z.object({
   email: z.email("Enter a valid email"),
@@ -15,6 +16,7 @@ const schema = z.object({
 });
 
 export default function LoginPage() {
+  usePageTitle("Sign in");
   const { login, user, isLoading } = useAuth();
   const router = useRouter();
   const [email, setEmail] = useState("");
@@ -104,6 +106,12 @@ export default function LoginPage() {
               {errors.password && (
                 <p className="text-xs text-error-500">{errors.password}</p>
               )}
+              <Link
+                href="/forgot-password"
+                className="self-end text-xs text-primary-600 hover:underline"
+              >
+                Forgot password?
+              </Link>
             </div>
 
             {serverError && (

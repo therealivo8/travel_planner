@@ -21,10 +21,10 @@ Both modes go beyond simple point-A-to-point-B navigation: point-to-point trips 
 | 3 | [phase-3-point-to-point-routing.md](./phase-3-point-to-point-routing.md) | Phase 2 | Maps integration, route calculation, interactive map UI |
 | 4 | [phase-4-radius-mode.md](./phase-4-radius-mode.md) | Phase 3 | Isochrone, POI discovery, radius trip flow |
 | 5 | [phase-5-trip-management.md](./phase-5-trip-management.md) | Phase 4 | Itinerary builder, sharing, PDF export, dashboard |
-| 6 | [phase-6-llm-integration.md](./phase-6-llm-integration.md) | Phase 5 | Claude AI — natural language planning, suggestions, chat |
+| 6 | [phase-6-llm-integration.md](./phase-6-llm-integration.md) | Phase 5 | Claude AI — natural language planning, suggestions, chat. **Mostly superseded by Phase 18** (features 1, 2, 4 re-scoped; 3 dropped; 5 chat deferred) |
 | 7 | [phase-7-corridor-and-itinerary-optimization.md](./phase-7-corridor-and-itinerary-optimization.md) | Phase 5 | Corridor stop discovery (point-to-point), radius itinerary optimization |
 | 8 | [phase-8-hardening-and-bugfixes.md](./phase-8-hardening-and-bugfixes.md) | Phase 7 | Sign-out, token refresh, rate-limit fix, PDF injection fix, prod secret-key guard, error-detail leakage |
-| 9 | [phase-9-suggest-stops-and-navigation.md](./phase-9-suggest-stops-and-navigation.md) | Phase 7, Phase 8 | AI suggest-stops (Phase 6 slice), global nav + sign-out UI, itinerary board persistence fixes |
+| 9 | [phase-9-suggest-stops-and-navigation.md](./phase-9-suggest-stops-and-navigation.md) | Phase 7, Phase 8 | AI suggest-stops (Phase 6 slice; **Part A superseded by Phase 18**), global nav + sign-out UI, itinerary board persistence fixes |
 | 10 | [phase-10-security-hardening-round-2.md](./phase-10-security-hardening-round-2.md) | Phase 9 | Rate-limit auth/export endpoints, Sentry + structured security logging + alerting, CI lockfile pinning, `next` upgrade, input bounds |
 | 11 | [phase-11-production-deployment.md](./phase-11-production-deployment.md) | Phase 10 | Deploy to Railway (backend + Postgres) + Vercel (frontend), secrets inventory, prod guardrails, deployment runbook |
 | 12 | [phase-12-resume-relevant-devops-practices.md](./phase-12-resume-relevant-devops-practices.md) | Phase 11 | Terraform IaC for Railway/Vercel, CI/CD pipeline that gates deploy on tests, real backend/frontend test suites, external-reader repo documentation |

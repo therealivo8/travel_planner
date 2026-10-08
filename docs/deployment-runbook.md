@@ -66,6 +66,7 @@ backup instead.
 | `MAPS_API_KEY` | Railway | None — regenerate in Google Cloud Console, update, redeploy |
 | `NEXT_PUBLIC_MAPS_API_KEY` | Vercel | None — browser key, restrict by HTTP referrer |
 | `ORS_API_KEY` | Railway | None — regenerate at the HeiGIT account page |
+| `RESEND_API_KEY` | Railway | None — regenerate in the Resend dashboard, update, redeploy. Until it's set, users can't reset by email: outside production the link is only logged, and in production nothing is logged or sent. |
 | `SENTRY_DSN` / `NEXT_PUBLIC_SENTRY_DSN` | Railway / Vercel | None — DSNs are write-only, not secrets |
 | `DATABASE_URL` | Railway (auto-injected) | Don't set by hand; Railway manages it |
 

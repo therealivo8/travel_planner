@@ -78,7 +78,7 @@ export function TopNav({ className }: TopNavProps) {
                 <div className="hidden md:block">
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <button className="focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 rounded-full">
+                      <button aria-label="Account menu" className="focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 rounded-full">
                         <Avatar className="h-8 w-8 cursor-pointer">
                           <AvatarFallback>{userInitials(user)}</AvatarFallback>
                         </Avatar>
@@ -94,9 +94,9 @@ export function TopNav({ className }: TopNavProps) {
                         )}
                       </div>
                       <DropdownMenuSeparator />
-                      <DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => router.push("/settings")}>
                         <User className="h-4 w-4 mr-2" />
-                        Profile
+                        Settings
                       </DropdownMenuItem>
                       <DropdownMenuSeparator />
                       <DropdownMenuItem
@@ -145,6 +145,13 @@ export function TopNav({ className }: TopNavProps) {
                           ))}
                         </nav>
                         <div className="mt-auto pt-4 border-t border-neutral-200">
+                          <Link
+                            href="/settings"
+                            className="flex items-center gap-2 px-3 py-2.5 text-sm font-medium text-neutral-700 rounded-lg hover:bg-neutral-100 w-full transition-colors"
+                          >
+                            <User className="h-4 w-4" />
+                            Settings
+                          </Link>
                           <button
                             onClick={handleLogout}
                             className="flex items-center gap-2 px-3 py-2.5 text-sm font-medium text-error-500 rounded-lg hover:bg-red-50 w-full transition-colors"

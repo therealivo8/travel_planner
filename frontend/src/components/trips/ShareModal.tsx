@@ -1,5 +1,6 @@
 "use client";
 
+import { toast } from "sonner";
 import { useEffect, useState } from "react";
 import { Copy, Check, Share2, X } from "lucide-react";
 import { api } from "@/lib/api";
@@ -46,7 +47,7 @@ export function ShareModal({ tripId, initialIsPublic, initialShareToken, onClose
         setShareInfo(info);
       }
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to update sharing");
+      toast.error(err instanceof Error ? err.message : "Failed to update sharing");
     } finally {
       setLoading(false);
     }
@@ -67,7 +68,7 @@ export function ShareModal({ tripId, initialIsPublic, initialShareToken, onClose
             <Share2 className="h-5 w-5 text-primary-600" />
             <h2 className="text-base font-semibold text-neutral-900">Share Trip</h2>
           </div>
-          <button onClick={onClose} className="text-neutral-400 hover:text-neutral-700">
+          <button onClick={onClose} aria-label="Close" className="text-neutral-400 hover:text-neutral-700">
             <X className="h-5 w-5" />
           </button>
         </div>
@@ -103,7 +104,13 @@ export function ShareModal({ tripId, initialIsPublic, initialShareToken, onClose
               value={shareInfo.share_url}
               className="flex-1 text-xs bg-neutral-50 border border-neutral-200 rounded-lg px-3 py-2 text-neutral-700 font-mono focus:outline-none"
             />
-            <Button size="sm" variant="outline" onClick={handleCopy} className="shrink-0">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleCopy}
+              className="shrink-0"
+              aria-label={copied ? "Link copied" : "Copy share link"}
+            >
               {copied ? <Check className="h-3.5 w-3.5 text-green-600" /> : <Copy className="h-3.5 w-3.5" />}
             </Button>
           </div>

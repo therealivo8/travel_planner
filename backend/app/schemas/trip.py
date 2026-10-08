@@ -3,6 +3,7 @@ import uuid
 from datetime import date as date_type
 from datetime import datetime, time
 from typing import Any, Literal  # noqa: F401
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import BaseModel, Field, computed_field, field_validator, model_validator
 
@@ -19,6 +20,14 @@ MAX_ID_LIST_LENGTH = 100
 # clean 422 at the API layer instead of surfacing as a DB error.
 # See app/models/trip.py: Waypoint.label = String(200), ItineraryDay.title = String(200).
 MAX_SHORT_TEXT_LENGTH = 200
+
+
+def _validate_timezone(value: str) -> str:
+    try:
+        ZoneInfo(value)
+    except (ZoneInfoNotFoundError, ValueError, OSError) as exc:
+        raise ValueError("timezone must be an IANA name such as 'America/New_York'") from exc
+    return value
 
 
 class WaypointCreate(BaseModel):
@@ -72,6 +81,10 @@ class TripCreate(BaseModel):
     # radius fields
     max_drive_minutes: int | None = Field(default=None, ge=1)
     notes: str | None = Field(default=None, max_length=2000)
+    # Phase 16: the browser's IANA timezone, used to place calendar events.
+    timezone: str = Field(default="UTC", max_length=64)
+
+    _check_timezone = field_validator("timezone")(_validate_timezone)
 
     @model_validator(mode="after")
     def validate_mode_fields(self) -> "TripCreate":
@@ -97,6 +110,24 @@ class TripUpdate(BaseModel):
     notes: str | None = Field(default=None, max_length=2000)
     start_date: date_type | None = None
     cover_image_url: str | None = Field(default=None, max_length=2000)
+    # Phase 16 (null is rejected for the non-nullable ones below)
+    vehicle_mpg: float | None = Field(default=None, ge=1, le=300)
+    fuel_price_per_unit: float | None = Field(default=None, ge=0, le=999)
+    budget_total: float | None = Field(default=None, ge=0, le=99_999_999)
+    currency: str | None = Field(default=None, min_length=3, max_length=3)
+    timezone: str | None = Field(default=None, max_length=64)
+
+    @field_validator("timezone")
+    @classmethod
+    def _check_timezone(cls, value: str | None) -> str | None:
+        return None if value is None else _validate_timezone(value)
+
+    @model_validator(mode="after")
+    def _no_null_required_fields(self) -> "TripUpdate":
+        for name in ("vehicle_mpg", "fuel_price_per_unit", "currency", "timezone"):
+            if name in self.model_fields_set and getattr(self, name) is None:
+                raise ValueError(f"{name} cannot be null")
+        return self
 
 
 class TripOut(BaseModel):
@@ -120,6 +151,12 @@ class TripOut(BaseModel):
     is_public: bool = False
     start_date: date_type | None = None
     cover_image_url: str | None = None
+    vehicle_mpg: float = 28.0
+    fuel_price_per_unit: float = 3.5
+    budget_total: float | None = None
+    currency: str = "USD"
+    timezone: str = "UTC"
+    is_example: bool = False
     created_at: datetime
     updated_at: datetime
     waypoints: list[WaypointOut] = []
@@ -159,6 +196,7 @@ class TripListOut(BaseModel):
     cover_image_url: str | None = None
     start_date: date_type | None = None
     is_public: bool = False
+    is_example: bool = False
     created_at: datetime
     updated_at: datetime
 
@@ -364,6 +402,8 @@ class PublicTripOut(BaseModel):
     route_polyline: str | None
     start_date: date_type | None
     cover_image_url: str | None
+    # The owner's display preference, so the shared page matches what they see.
+    units: Literal["imperial", "metric"] = "imperial"
     waypoints: list[WaypointOut] = []
     days: list[ItineraryDayOut] = []
 

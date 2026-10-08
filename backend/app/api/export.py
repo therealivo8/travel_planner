@@ -1,8 +1,9 @@
 import html
 import uuid
 from typing import Annotated
+from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -10,8 +11,11 @@ from sqlalchemy.orm import selectinload
 
 from app.core.deps import CurrentUser
 from app.core.limiter import limiter
+from app.core.trips import get_owned_trip
 from app.db.session import get_db
+from app.models.logistics import PackingItem
 from app.models.trip import ItineraryDay, Trip, Waypoint
+from app.services.export_formats import build_gpx, build_ics
 
 router = APIRouter(tags=["export"])
 
@@ -33,14 +37,17 @@ def _format_duration(seconds: int | None) -> str:
     return f"{minutes}m"
 
 
-def _format_distance(meters: int | None) -> str:
+def _format_distance(meters: int | None, units: str = "imperial") -> str:
     if meters is None:
         return "—"
-    miles = meters / 1609.34
-    return f"{miles:.1f} mi"
+    if units == "metric":
+        return f"{meters / 1000:.1f} km"
+    return f"{meters / 1609.34:.1f} mi"
 
 
-def _build_html(trip: Trip) -> str:
+def _build_html(
+    trip: Trip, packing: list[PackingItem] | None = None, units: str = "imperial"
+) -> str:
     sorted_wps = sorted(trip.waypoints, key=lambda w: w.position)
     sorted_days = sorted(trip.itinerary_days, key=lambda d: d.day_number)
 
@@ -105,6 +112,25 @@ def _build_html(trip: Trip) -> str:
           <ul class="unscheduled-list">{rows}</ul>
         </div>"""
 
+    packing_section = ""
+    if packing:
+        by_category: dict[str, list[PackingItem]] = {}
+        for item in packing:
+            by_category.setdefault(item.category, []).append(item)
+        groups = "".join(
+            f"<h3>{_e(cat)}</h3><ul class=\"unscheduled-list\">"
+            + "".join(
+                f"<li>{'&#9745;' if i.packed else '&#9744;'} {_e(i.label)}</li>" for i in items
+            )
+            + "</ul>"
+            for cat, items in sorted(by_category.items())
+        )
+        packing_section = f"""
+        <div class="day-section">
+          <div class="day-header"><span class="day-title">Packing list</span></div>
+          {groups}
+        </div>"""
+
     start_date_str = trip.start_date.strftime("%B %d, %Y") if trip.start_date else "Date TBD"
 
     return f"""<!DOCTYPE html>
@@ -145,7 +171,7 @@ def _build_html(trip: Trip) -> str:
   <div class="stats">
     <div class="stat-item">
       <span class="stat-label">Total Distance</span>
-      <span class="stat-value">{_format_distance(trip.total_distance_meters)}</span>
+      <span class="stat-value">{_format_distance(trip.total_distance_meters, units)}</span>
     </div>
     <div class="stat-item">
       <span class="stat-label">Drive Time</span>
@@ -163,6 +189,7 @@ def _build_html(trip: Trip) -> str:
 
   {day_sections}
   {unscheduled_section}
+  {packing_section}
 </body>
 </html>"""
 
@@ -174,6 +201,7 @@ async def export_pdf(
     trip_id: uuid.UUID,
     current_user: CurrentUser,
     db: DB,
+    include_packing: bool = Query(False, description="Append the packing checklist"),
 ) -> Response:
     try:
         import weasyprint
@@ -195,18 +223,79 @@ async def export_pdf(
     if trip is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Trip not found")
 
-    document_html = _build_html(trip)
+    packing: list[PackingItem] | None = None
+    if include_packing:
+        rows = await db.execute(
+            select(PackingItem)
+            .where(PackingItem.trip_id == trip_id)
+            .order_by(PackingItem.category, PackingItem.position)
+        )
+        packing = list(rows.scalars())
+
+    document_html = _build_html(trip, packing, current_user.units)
     # Defense in depth alongside _e(): even if an unescaped field slips through in the
     # future, WeasyPrint can't be made to fetch an attacker-controlled URL (SSRF) — only
     # inline data: URIs resolve, everything else fails to load instead of erroring out.
     url_fetcher = weasyprint.URLFetcher(allowed_protocols=["data"])
     pdf_bytes = weasyprint.HTML(string=document_html, url_fetcher=url_fetcher).write_pdf()
 
-    safe_title = "".join(c if c.isalnum() or c in " -_" else "_" for c in trip.title)[:60]
-    filename = f"{safe_title}.pdf"
-
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        headers={"Content-Disposition": _attachment_header(trip.title, "pdf")},
+    )
+
+
+def _attachment_header(title: str, ext: str) -> str:
+    """Content-Disposition for a download named after the trip.
+
+    Header values must be Latin-1, but `str.isalnum()` accepts any script, so a title like
+    "Tokyo 東京" used to raise UnicodeEncodeError (a 500). The plain `filename` is an ASCII
+    fallback; `filename*` (RFC 5987) carries the real title for browsers that read it.
+    """
+    stem = title[:60].strip() or "trip"
+    ascii_stem = "".join(c if c.isascii() and (c.isalnum() or c in " -_") else "_" for c in stem)
+    header = f'attachment; filename="{ascii_stem}.{ext}"'
+    if ascii_stem != stem:
+        header += f"; filename*=UTF-8''{quote(stem + '.' + ext, safe='')}"
+    return header
+
+
+async def _load_for_export(db: AsyncSession, trip_id: uuid.UUID, user_id: uuid.UUID) -> Trip:
+    return await get_owned_trip(
+        db,
+        trip_id,
+        user_id,
+        selectinload(Trip.waypoints),
+        selectinload(Trip.itinerary_days).selectinload(ItineraryDay.waypoints),
+    )
+
+
+@router.get("/trips/{trip_id}/export/ics")
+@limiter.limit("20/hour")
+async def export_ics(
+    request: Request, trip_id: uuid.UUID, current_user: CurrentUser, db: DB
+) -> Response:
+    trip = await _load_for_export(db, trip_id, current_user.id)
+    return Response(
+        content=build_ics(trip),
+        media_type="text/calendar",
+        headers={
+            "Content-Disposition": _attachment_header(trip.title, "ics")
+        },
+    )
+
+
+@router.get("/trips/{trip_id}/export/gpx")
+@limiter.limit("20/hour")
+async def export_gpx(
+    request: Request, trip_id: uuid.UUID, current_user: CurrentUser, db: DB
+) -> Response:
+    trip = await _load_for_export(db, trip_id, current_user.id)
+    return Response(
+        content=build_gpx(trip),
+        media_type="application/gpx+xml",
+        headers={
+            "Content-Disposition": _attachment_header(trip.title, "gpx")
+        },
     )

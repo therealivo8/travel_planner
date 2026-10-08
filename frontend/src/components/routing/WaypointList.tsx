@@ -21,6 +21,8 @@ import { GripVertical, Trash2, Plus, Clock, Milestone } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { AddressAutocomplete, type AddressSelection } from "./AddressAutocomplete";
+import { formatLeg } from "@/lib/format";
+import { useUnits } from "@/hooks/useUnits";
 import type { Waypoint } from "@/types";
 
 interface Props {
@@ -31,21 +33,6 @@ interface Props {
   onUpdateLabel: (waypointId: string, label: string) => Promise<void>;
   onUpdateStopDuration: (waypointId: string, minutes: number | null) => Promise<void>;
   loading?: boolean;
-}
-
-function formatLeg(seconds: number | null, meters: number | null): string | null {
-  if (seconds == null && meters == null) return null;
-  const parts: string[] = [];
-  if (meters != null) {
-    const miles = meters / 1609.34;
-    parts.push(miles >= 10 ? `${Math.round(miles)} mi` : `${miles.toFixed(1)} mi`);
-  }
-  if (seconds != null) {
-    const h = Math.floor(seconds / 3600);
-    const m = Math.round((seconds % 3600) / 60);
-    parts.push(h > 0 ? `${h} h ${m} min` : `${m} min`);
-  }
-  return parts.join(" · ");
 }
 
 interface SortableItemProps {
@@ -73,7 +60,12 @@ function SortableWaypointItem({
     opacity: isDragging ? 0.5 : 1,
   };
 
-  const legInfo = formatLeg(waypoint.drive_seconds_from_prev, waypoint.distance_meters_from_prev);
+  const units = useUnits();
+  const legInfo = formatLeg(
+    waypoint.drive_seconds_from_prev,
+    waypoint.distance_meters_from_prev,
+    units
+  );
 
   return (
     <div ref={setNodeRef} style={style} className="group">

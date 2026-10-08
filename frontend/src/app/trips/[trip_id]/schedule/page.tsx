@@ -19,6 +19,7 @@ import { useAuth } from "@/context/AuthContext";
 import { api, getApiToken } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { usePageTitle } from "@/hooks/usePageTitle";
 import { PageShell } from "@/components/layout/PageShell";
 import type { Itinerary, ItineraryDay, Trip } from "@/types";
 
@@ -169,6 +170,7 @@ function DaySection({ day }: { day: ItineraryDay }) {
 // ── page ──────────────────────────────────────────────────────────────────
 
 export default function SchedulePage({ params }: { params: Promise<{ trip_id: string }> }) {
+  usePageTitle("Schedule");
   const { trip_id } = use(params);
   const router = useRouter();
   const { user, isLoading: authLoading } = useAuth();

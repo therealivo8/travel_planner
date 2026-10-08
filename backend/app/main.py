@@ -12,15 +12,19 @@ from slowapi.errors import RateLimitExceeded
 
 from app.api.auth import router as auth_router
 from app.api.corridor import router as corridor_router
+from app.api.expenses import router as expenses_router
 from app.api.export import router as export_router
 from app.api.health import router as health_router
 from app.api.itinerary import router as itinerary_router
+from app.api.navigation import router as navigation_router
+from app.api.packing import router as packing_router
 from app.api.radius import router as radius_router
 from app.api.routing import router as routing_router
 from app.api.sharing import router as sharing_router
 from app.api.trips import router as trips_router
 from app.api.usage import router as usage_router
 from app.api.waypoints import router as waypoints_router
+from app.api.weather import router as weather_router
 from app.config import settings
 from app.core.budget import BudgetExceeded, UserQuotaExceeded
 from app.core.cleanup import cleanup_loop
@@ -135,3 +139,7 @@ app.include_router(itinerary_router)
 app.include_router(sharing_router)
 app.include_router(export_router)
 app.include_router(usage_router)
+app.include_router(expenses_router)
+app.include_router(weather_router)
+app.include_router(packing_router)
+app.include_router(navigation_router)

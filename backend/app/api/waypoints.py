@@ -62,7 +62,10 @@ async def add_waypoint(
         select(Waypoint).where(Waypoint.trip_id == trip_id)
     )
     position = len(count_result.scalars().all())
-    waypoint = Waypoint(trip_id=trip_id, position=position, **body.model_dump())
+    data = body.model_dump()
+    if data["stop_duration_minutes"] is None:
+        data["stop_duration_minutes"] = current_user.default_stop_minutes
+    waypoint = Waypoint(trip_id=trip_id, position=position, **data)
     db.add(waypoint)
     await db.commit()
     await db.refresh(waypoint)

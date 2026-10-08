@@ -72,6 +72,16 @@ class Trip(Base):
     is_public: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
     start_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     cover_image_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Phase 15: the demo trip copied into every new account (no upstream calls to create).
+    is_example: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    # Phase 16: cost estimate inputs, plus the IANA timezone used for calendar export.
+    vehicle_mpg: Mapped[float] = mapped_column(Numeric(4, 1), nullable=False, server_default="28.0")
+    fuel_price_per_unit: Mapped[float] = mapped_column(
+        Numeric(5, 2), nullable=False, server_default="3.50"
+    )
+    budget_total: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)
+    currency: Mapped[str] = mapped_column(String(3), nullable=False, server_default="USD")
+    timezone: Mapped[str] = mapped_column(String(64), nullable=False, server_default="UTC")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

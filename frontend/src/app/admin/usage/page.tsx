@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { getAdminUsage } from "@/lib/api";
+import { usePageTitle } from "@/hooks/usePageTitle";
 import { PageShell } from "@/components/layout/PageShell";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Progress } from "@/components/ui/progress";
@@ -49,6 +50,7 @@ function Row({ s }: { s: SkuUsage }) {
 }
 
 export default function AdminUsagePage() {
+  usePageTitle("API usage");
   const [usage, setUsage] = useState<AdminUsage | null>(null);
   const [error, setError] = useState<string | null>(null);
 

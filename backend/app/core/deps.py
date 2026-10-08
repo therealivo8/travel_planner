@@ -7,7 +7,7 @@ from jose import JWTError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.security import decode_token
+from app.core.security import decode_token_claims, issued_before_password_change
 from app.core.security_log import log_unauthorized
 from app.db.session import get_db
 from app.models.user import User
@@ -29,14 +29,14 @@ async def get_current_user(
         log_unauthorized(request)
         raise exc
     try:
-        user_id = decode_token(credentials.credentials, "access")
+        user_id, iat = decode_token_claims(credentials.credentials, "access")
     except JWTError:
         log_unauthorized(request)
         raise exc
 
     result = await db.execute(select(User).where(User.id == uuid.UUID(user_id)))
     user = result.scalar_one_or_none()
-    if user is None:
+    if user is None or issued_before_password_change(iat, user.password_changed_at):
         log_unauthorized(request)
         raise exc
     # Read by app.core.limiter's key function so rate limits are keyed per-user

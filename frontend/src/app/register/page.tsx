@@ -8,6 +8,7 @@ import { z } from "zod";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { usePageTitle } from "@/hooks/usePageTitle";
 
 const schema = z.object({
   displayName: z.string().optional(),
@@ -16,6 +17,7 @@ const schema = z.object({
 });
 
 export default function RegisterPage() {
+  usePageTitle("Create account");
   const { register } = useAuth();
   const router = useRouter();
   const [displayName, setDisplayName] = useState("");
