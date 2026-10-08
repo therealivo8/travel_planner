@@ -29,6 +29,12 @@ Both modes go beyond simple point-A-to-point-B navigation: point-to-point trips 
 | 11 | [phase-11-production-deployment.md](./phase-11-production-deployment.md) | Phase 10 | Deploy to Railway (backend + Postgres) + Vercel (frontend), secrets inventory, prod guardrails, deployment runbook |
 | 12 | [phase-12-resume-relevant-devops-practices.md](./phase-12-resume-relevant-devops-practices.md) | Phase 11 | Terraform IaC for Railway/Vercel, CI/CD pipeline that gates deploy on tests, real backend/frontend test suites, external-reader repo documentation |
 | 13 | [phase-13-itinerary-builder-completion.md](./phase-13-itinerary-builder-completion.md) | Phase 9 | Itinerary board: register day columns as drop targets (drag was inert), non-drag assign paths, day feasibility/auto-order/notes |
+| 14 | [phase-14-api-budget-and-caching.md](./phase-14-api-budget-and-caching.md) | Phase 11 | Postgres-backed daily/monthly budget per upstream SKU, per-user daily quotas, isochrone + discovery caches, 3–5× cheaper corridor discovery, `/admin/usage` page. **Do this first** — every later phase adds traffic |
+| 15 | [phase-15-account-onboarding-and-polish.md](./phase-15-account-onboarding-and-polish.md) | Phase 14 | Settings (units, home address, password change, export, delete account), password reset via Resend, zero-API demo trip, toasts/404/error pages, mobile pass, privacy/terms + attribution |
+| 16 | [phase-16-trip-logistics-toolkit.md](./phase-16-trip-logistics-toolkit.md) | Phase 13 (15 optional) | Fuel-cost estimate + expense tracker, Open-Meteo weather per day + sunset warning, packing checklist, "Open in Google/Apple Maps" deep links, .ics/.gpx export — **no Google/ORS calls** |
+| 17 | [phase-17-on-the-road-and-trip-memories.md](./phase-17-on-the-road-and-trip-memories.md) | Phase 15, 16 | PWA + offline itinerary, Today view with check-ins, journal + photos on Cloudflare R2, trip recap, "My Map" of all trips, polyline SVG thumbnails + `next/og` share previews (no Static Maps) |
+| 18 | [phase-18-lean-ai-layer.md](./phase-18-lean-ai-layer.md) | Phase 14 (16 for packing) | Cost-bounded Claude features: natural-language trip creation, AI suggest-stops over cached candidates, cached trip narrative, packing suggestions. **Supersedes Phase 6 features 1/2/4 and Phase 9 Part A; Phase 6 chat deferred** |
+| 19 | [phase-19-collaborative-trips.md](./phase-19-collaborative-trips.md) | Phase 14, 15 | Consolidate the 8 copies of trip-ownership checks, trip members (owner/editor/viewer) via invite links, stop voting, comments, optimistic concurrency + 20s polling, activity feed |
 
 ---
 
@@ -51,7 +57,18 @@ Phase 1 (Foundation) ─────┘
 
 Phase 9 (Itinerary board) ── Phase 13 (Itinerary Builder Completion)
     └── independent of 10-12; touches only the itinerary board
+
+"Complete app" track (cost-aware; see ../cost-model.md):
+Phase 11 ── Phase 14 (API Budget & Caching)  ← do first
+                ├── Phase 15 (Account, Onboarding & Polish)
+                │       ├── Phase 17 (On the Road & Memories) ← also needs 16
+                │       └── Phase 19 (Collaborative Trips)
+                └── Phase 18 (Lean AI Layer)
+Phase 13 ── Phase 16 (Trip Logistics Toolkit, zero API cost) ── Phase 17
 ```
+
+Suggested order: **14 → 16 → 15 → 17 → 18 → 19**. Phase 16 is cheap and very visible, so it can
+start as soon as 13 is done; 18 and 19 are the largest and can swap based on interest.
 
 Each phase is designed to be independently workable in a single agent session with a focused context window.
 
@@ -61,8 +78,15 @@ Each phase is designed to be independently workable in a single agent session wi
 | API | Used In | Purpose |
 |---|---|---|
 | Google Maps Platform | Phase 3, 4 | Geocoding, Places Autocomplete, Routes API, Nearby Search, Distance Matrix, Static Maps |
-| OpenRouteService | Phase 4 | Isochrone (drive-time boundary) generation |
-| Anthropic (Claude) | Phase 6 | LLM — trip creation, suggestions, scheduling, narrative |
+| OpenRouteService | Phase 4 | Isochrone (drive-time boundary) generation — free Standard plan: 500 isochrones/day, 20/min |
+| Anthropic (Claude) | Phase 18 (supersedes 6) | LLM — trip creation, suggest-stops, narrative, packing |
+| Open-Meteo | Phase 16 | Weather forecast + sunrise/sunset (free, no key, non-commercial) |
+| Google Maps URLs | Phase 16 | Navigation deep links (free, no key, not billed) |
+| Resend | Phase 15, 19 | Password-reset and invite email (free tier 3k/month) |
+| Cloudflare R2 | Phase 17 | Journal photo storage (10 GB free, zero egress) |
+
+Per-feature call counts, free-tier capacity, and the monthly budget are in
+[`../cost-model.md`](../cost-model.md).
 
 ---
 
