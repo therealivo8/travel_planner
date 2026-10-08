@@ -10,7 +10,7 @@ from sqlalchemy.orm import selectinload
 from app.api.weather import get_trip_weather
 from app.core.deps import CurrentUser
 from app.core.limiter import limiter
-from app.core.trips import get_owned_trip
+from app.core.trip_access import TripRole, get_trip_for
 from app.db.session import get_db
 from app.models.logistics import PackingItem
 from app.models.trip import CorridorSuggestion, ItineraryDay, RadiusSuggestion, Trip
@@ -55,7 +55,7 @@ async def _next_position(db: AsyncSession, trip_id: uuid.UUID) -> int:
 async def list_items(
     trip_id: uuid.UUID, current_user: CurrentUser, db: DB
 ) -> list[PackingItemOut]:
-    await get_owned_trip(db, trip_id, current_user.id)
+    await get_trip_for(trip_id, current_user, db, TripRole.VIEWER)
     return [PackingItemOut.model_validate(i) for i in await _items(db, trip_id)]
 
 
@@ -63,7 +63,7 @@ async def list_items(
 async def add_item(
     trip_id: uuid.UUID, body: PackingItemCreate, current_user: CurrentUser, db: DB
 ) -> PackingItemOut:
-    await get_owned_trip(db, trip_id, current_user.id)
+    await get_trip_for(trip_id, current_user, db, TripRole.EDITOR)
     item = PackingItem(
         trip_id=trip_id,
         label=body.label.strip(),
@@ -80,7 +80,7 @@ async def add_item(
 async def list_templates(
     trip_id: uuid.UUID, current_user: CurrentUser, db: DB
 ) -> list[PackingTemplateOut]:
-    await get_owned_trip(db, trip_id, current_user.id)
+    await get_trip_for(trip_id, current_user, db, TripRole.VIEWER)
     return [PackingTemplateOut(name=n, item_count=len(i)) for n, i in TEMPLATES.items()]
 
 
@@ -89,7 +89,7 @@ async def add_template(
     trip_id: uuid.UUID, name: str, current_user: CurrentUser, db: DB
 ) -> list[PackingItemOut]:
     """Insert a template's items, skipping any already on the list (case-insensitive)."""
-    await get_owned_trip(db, trip_id, current_user.id)
+    await get_trip_for(trip_id, current_user, db, TripRole.EDITOR)
     items = template_items(name)
     if items is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Unknown template")
@@ -110,12 +110,13 @@ async def add_template(
 async def suggestions(
     request: Request, trip_id: uuid.UUID, current_user: CurrentUser, db: DB
 ) -> list[PackingSuggestionOut]:
-    """Rule-based hints from data the app already has (a later phase may swap in AI)."""
-    trip = await get_owned_trip(
-        db,
+    """Rule-based hints from data the app already has (forecast and selected stop categories)."""
+    trip = await get_trip_for(
         trip_id,
-        current_user.id,
-        selectinload(Trip.itinerary_days).selectinload(ItineraryDay.waypoints),
+        current_user,
+        db,
+        TripRole.VIEWER,
+        load=(selectinload(Trip.itinerary_days).selectinload(ItineraryDay.waypoints),),
     )
     have = {i.label.lower() for i in await _items(db, trip_id)}
 
@@ -168,7 +169,7 @@ async def update_item(
     current_user: CurrentUser,
     db: DB,
 ) -> PackingItemOut:
-    await get_owned_trip(db, trip_id, current_user.id)
+    await get_trip_for(trip_id, current_user, db, TripRole.EDITOR)
     item = await _get_item(db, trip_id, item_id)
     for field, value in body.model_dump(exclude_none=True).items():
         setattr(item, field, value.strip() if isinstance(value, str) else value)
@@ -181,7 +182,7 @@ async def update_item(
 async def delete_item(
     trip_id: uuid.UUID, item_id: uuid.UUID, current_user: CurrentUser, db: DB
 ) -> None:
-    await get_owned_trip(db, trip_id, current_user.id)
+    await get_trip_for(trip_id, current_user, db, TripRole.EDITOR)
     await db.delete(await _get_item(db, trip_id, item_id))
     await db.commit()
 

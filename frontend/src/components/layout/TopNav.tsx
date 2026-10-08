@@ -18,9 +18,13 @@ import {
   SheetTrigger,
 } from "@/components/ui";
 import { useAuth } from "@/context/AuthContext";
+import { NotificationBell } from "@/components/layout/NotificationBell";
 import { cn } from "@/lib/utils";
 
-const navLinks = [{ href: "/trips", label: "Trips" }];
+const navLinks = [
+  { href: "/trips", label: "Trips" },
+  { href: "/map", label: "My map" },
+];
 
 function userInitials(user: { email: string; display_name: string | null }) {
   if (user.display_name) return user.display_name.slice(0, 2).toUpperCase();
@@ -74,6 +78,8 @@ export function TopNav({ className }: TopNavProps) {
           <div className="flex items-center gap-2">
             {user ? (
               <>
+                <NotificationBell />
+
                 {/* User menu (desktop) */}
                 <div className="hidden md:block">
                   <DropdownMenu>

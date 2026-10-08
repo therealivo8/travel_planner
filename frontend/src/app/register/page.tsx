@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { use, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { MapPin } from "lucide-react";
@@ -8,6 +8,7 @@ import { z } from "zod";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { safeNext } from "@/lib/redirect";
 import { usePageTitle } from "@/hooks/usePageTitle";
 
 const schema = z.object({
@@ -16,7 +17,12 @@ const schema = z.object({
   password: z.string().min(8, "Password must be at least 8 characters"),
 });
 
-export default function RegisterPage() {
+export default function RegisterPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ next?: string }>;
+}) {
+  const { next } = use(searchParams);
   usePageTitle("Create account");
   const { register } = useAuth();
   const router = useRouter();
@@ -48,7 +54,7 @@ export default function RegisterPage() {
     setPending(true);
     try {
       await register(email, password, displayName || undefined);
-      router.push("/trips");
+      router.push(safeNext(next));
     } catch (err) {
       setServerError(err instanceof Error ? err.message : "Registration failed");
     } finally {
@@ -135,7 +141,9 @@ export default function RegisterPage() {
 
           <p className="text-sm text-center text-neutral-500 mt-6">
             Already have an account?{" "}
-            <Link href="/login" className="text-primary-600 hover:underline font-medium">
+            <Link
+              href={next ? `/login?next=${encodeURIComponent(next)}` : "/login"}
+              className="text-primary-600 hover:underline font-medium">
               Sign in
             </Link>
           </p>

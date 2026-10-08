@@ -24,6 +24,7 @@ from app.config import settings
 from app.core.demo import create_demo_trip
 from app.core.deps import CurrentUser
 from app.core.limiter import limiter
+from app.core.objects import queue_user_photo_deletes
 from app.core.security import (
     create_access_token,
     create_refresh_token,
@@ -39,6 +40,7 @@ from app.core.security_log import (
     log_password_reset_completed,
     log_password_reset_requested,
 )
+from app.core.trip_access import owned_by
 from app.db.session import get_db
 from app.models.logistics import PackingItem, TripExpense
 from app.models.trip import Trip
@@ -268,7 +270,7 @@ async def export_my_data(
     trips = (
         await db.execute(
             select(Trip)
-            .where(Trip.user_id == current_user.id)
+            .where(owned_by(current_user))
             .options(
                 selectinload(Trip.waypoints),
                 selectinload(Trip.itinerary_days),
@@ -326,6 +328,7 @@ async def delete_account(
     if not verify_password(body.password, current_user.hashed_password):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Password is incorrect")
     user_id = current_user.id
+    await queue_user_photo_deletes(db, user_id)
     # Trips, waypoints, days, expenses, packing, quotas and reset tokens all hang off
     # users.id with ON DELETE CASCADE.
     await db.delete(current_user)

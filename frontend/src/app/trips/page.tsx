@@ -20,6 +20,13 @@ import { usePageTitle } from "@/hooks/usePageTitle";
 import type { PaginatedTrips, TripListItem, TripStatus } from "@/types";
 
 type SortKey = "created_at" | "updated_at" | "start_date";
+type Scope = "all" | "mine" | "shared";
+
+const SCOPE_TABS: { label: string; value: Scope }[] = [
+  { label: "All trips", value: "all" },
+  { label: "My trips", value: "mine" },
+  { label: "Shared with me", value: "shared" },
+];
 
 const STATUS_TABS: { label: string; value: TripStatus | "all" }[] = [
   { label: "All", value: "all" },
@@ -49,12 +56,13 @@ export default function TripsPage() {
   const [error, setError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<TripStatus | "all">("all");
   const [sort, setSort] = useState<SortKey>("created_at");
+  const [scope, setScope] = useState<Scope>("all");
 
-  const fetchTrips = useCallback(async (status: TripStatus | "all", sortKey: SortKey) => {
+  const fetchTrips = useCallback(async (status: TripStatus | "all", sortKey: SortKey, scopeKey: Scope) => {
     setLoading(true);
     setError(null);
     try {
-      const params = new URLSearchParams({ sort: sortKey });
+      const params = new URLSearchParams({ sort: sortKey, scope: scopeKey });
       if (status !== "all") params.set("status", status);
       const data = await api.get<PaginatedTrips>(`/trips?${params.toString()}`);
       setTrips(data.items);
@@ -71,13 +79,13 @@ export default function TripsPage() {
       router.replace("/login?next=/trips");
       return;
     }
-    fetchTrips(statusFilter, sort);
-  }, [authLoading, user, router, statusFilter, sort, fetchTrips]);
+    fetchTrips(statusFilter, sort, scope);
+  }, [authLoading, user, router, statusFilter, sort, scope, fetchTrips]);
 
   async function handleDuplicate(tripId: string) {
     try {
       await api.post(`/trips/${tripId}/duplicate`);
-      fetchTrips(statusFilter, sort);
+      fetchTrips(statusFilter, sort, scope);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to duplicate trip");
     }
@@ -102,7 +110,7 @@ export default function TripsPage() {
   async function handleArchive(tripId: string) {
     try {
       await api.patch(`/trips/${tripId}`, { status: "completed" });
-      fetchTrips(statusFilter, sort);
+      fetchTrips(statusFilter, sort, scope);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to archive trip");
     }
@@ -127,6 +135,25 @@ export default function TripsPage() {
               New Trip
             </Link>
           </Button>
+        </div>
+
+        {/* Whose trips: everything, mine, or shared with me */}
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 flex gap-2 pb-3" role="group" aria-label="Show trips">
+          {SCOPE_TABS.map((tab) => (
+            <button
+              key={tab.value}
+              type="button"
+              onClick={() => setScope(tab.value)}
+              aria-pressed={scope === tab.value}
+              className={`rounded-full border px-3 py-1 text-xs font-medium ${
+                scope === tab.value
+                  ? "border-primary-500 bg-primary-500 text-white"
+                  : "border-neutral-200 bg-white text-neutral-600 hover:border-neutral-400"
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
         </div>
 
         {/* Filter + sort bar */}
@@ -182,7 +209,7 @@ export default function TripsPage() {
           </div>
         )}
 
-        {!loading && !error && trips.length === 0 && statusFilter === "all" && (
+        {!loading && !error && trips.length === 0 && statusFilter === "all" && scope !== "shared" && (
           <EmptyState
             icon={<MapPin className="h-6 w-6 text-neutral-400" />}
             heading="Plan your first road trip"
@@ -207,6 +234,12 @@ export default function TripsPage() {
           </EmptyState>
         )}
 
+        {!loading && !error && trips.length === 0 && statusFilter === "all" && scope === "shared" && (
+          <p className="py-20 text-center text-sm text-neutral-500">
+            Nothing has been shared with you yet. Ask a friend to send you an invite link.
+          </p>
+        )}
+
         {!loading && !error && trips.length === 0 && statusFilter !== "all" && (
           <p className="py-20 text-center text-sm text-neutral-500">
             No {statusFilter} trips. Try a different filter.
@@ -229,12 +262,16 @@ export default function TripsPage() {
                         : undefined
                     }
                     isExample={trip.is_example}
+                    role={trip.role}
+                    ownerName={trip.owner_name ?? undefined}
+                    routePolyline={trip.route_thumb}
                     driveTimeMin={driveMin(trip.total_drive_seconds)}
                     updatedAt={new Date(trip.updated_at)}
                   />
                 </Link>
                 <TripActionsMenu
                   tripId={trip.id}
+                  role={trip.role ?? "owner"}
                   onDuplicate={() => handleDuplicate(trip.id)}
                   onDelete={() => handleDelete(trip.id)}
                   onArchive={() => handleArchive(trip.id)}

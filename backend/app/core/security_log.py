@@ -108,3 +108,18 @@ def log_password_changed(request: Request, *, user_id: uuid.UUID) -> None:
 
 def log_account_deleted(request: Request, *, user_id: uuid.UUID) -> None:
     _log("auth.account_deleted", request, user_id=user_id)
+
+
+def log_membership(event: str, request: Request, *, actor_id: uuid.UUID, trip_id: uuid.UUID) -> None:
+    """Invite created/accepted/revoked, role changed, member removed or left: all of these
+    change who can read or edit a trip, so they're security-relevant."""
+    security_logger.warning(
+        event,
+        extra={
+            "event": event,
+            "ip": _client_ip(request),
+            "user_id": str(actor_id),
+            "trip_id": str(trip_id),
+            "path": request.url.path,
+        },
+    )

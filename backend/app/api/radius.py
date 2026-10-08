@@ -12,8 +12,11 @@ from starlette.concurrency import run_in_threadpool
 from app.core import budget, cache
 from app.core.deps import CurrentUser
 from app.core.limiter import limiter
+from app.core.trip_access import TripRole, display_name, get_trip_for, touch_trip
+from app.core.votes import carry_over_votes
 from app.db.session import get_db
 from app.models.trip import RadiusSuggestion, Trip, Waypoint
+from app.models.user import User
 from app.schemas.trip import (
     ItineraryBuildOut,
     ItineraryBuildRequest,
@@ -36,15 +39,16 @@ BUDGET_MULTIPLIER = 2  # round-trip budget = max_drive_minutes * BUDGET_MULTIPLI
 DB = Annotated[AsyncSession, Depends(get_db)]
 
 
-async def _get_radius_trip(trip_id: uuid.UUID, user_id: uuid.UUID, db: AsyncSession) -> Trip:
-    result = await db.execute(
-        select(Trip)
-        .where(Trip.id == trip_id, Trip.user_id == user_id)
-        .options(selectinload(Trip.waypoints), selectinload(Trip.radius_suggestions))
+async def _get_radius_trip(
+    trip_id: uuid.UUID, user: User, db: AsyncSession, min_role: TripRole = TripRole.OWNER
+) -> Trip:
+    trip = await get_trip_for(
+        trip_id,
+        user,
+        db,
+        min_role,
+        load=(selectinload(Trip.waypoints), selectinload(Trip.radius_suggestions)),
     )
-    trip = result.scalar_one_or_none()
-    if trip is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Trip not found")
     if trip.mode != "radius":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -63,7 +67,7 @@ async def discover(
     categories: list[str] | None = Query(None),
     refresh: bool = Query(False, description="Bypass the cache (counts against the quota)"),
 ) -> RadiusDiscoverResponse:
-    trip = await _get_radius_trip(trip_id, current_user.id, db)
+    trip = await _get_radius_trip(trip_id, current_user, db, TripRole.EDITOR)
 
     if trip.max_drive_minutes is None:
         raise HTTPException(
@@ -128,6 +132,7 @@ async def discover(
 
     assert result is not None
 
+    old_suggestions = [(sg.id, sg.place_id) for sg in trip.radius_suggestions]
     # Clear old suggestions before re-inserting
     await db.execute(delete(RadiusSuggestion).where(RadiusSuggestion.trip_id == trip_id))
 
@@ -153,6 +158,13 @@ async def discover(
         db.add(suggestion)
         new_suggestions.append(suggestion)
 
+    # Group votes follow the place, not the row: re-running discovery keeps them.
+    await db.flush()
+    await carry_over_votes(
+        db, trip_id, "radius", old_suggestions, [(sg.id, sg.place_id) for sg in new_suggestions]
+    )
+    await touch_trip(db, trip, current_user, ("discovery", f"{display_name(current_user)} ran discovery for new places"))
+
     await db.commit()
     await db.refresh(trip)
     for sg in new_suggestions:
@@ -172,7 +184,7 @@ async def get_suggestions(
     current_user: CurrentUser,
     db: DB,
 ) -> RadiusDiscoverResponse:
-    trip = await _get_radius_trip(trip_id, current_user.id, db)
+    trip = await _get_radius_trip(trip_id, current_user, db, TripRole.VIEWER)
 
     result = await db.execute(
         select(RadiusSuggestion).where(RadiusSuggestion.trip_id == trip_id)
@@ -210,7 +222,7 @@ async def select_suggestions(
     current_user: CurrentUser,
     db: DB,
 ) -> TripOut:
-    trip = await _get_radius_trip(trip_id, current_user.id, db)
+    trip = await _get_radius_trip(trip_id, current_user, db, TripRole.EDITOR)
 
     # Load requested suggestions and mark selected
     result = await db.execute(
@@ -257,6 +269,8 @@ async def select_suggestions(
             )
             db.add(wp)
 
+        await touch_trip(db, trip, current_user, ("stops_selected", f"{display_name(current_user)} updated the selected stops"))
+
         await db.commit()
 
         # Reload trip with fresh waypoints
@@ -295,6 +309,8 @@ async def select_suggestions(
                 wp.drive_seconds_from_prev = legs[i]["drive_seconds"]
                 wp.distance_meters_from_prev = legs[i]["distance_meters"]
 
+    await touch_trip(db, trip, current_user, ("stops_selected", f"{display_name(current_user)} updated the selected stops"))
+
     await db.commit()
 
     final = await db.execute(
@@ -312,7 +328,7 @@ async def build_itinerary(
     current_user: CurrentUser,
     db: DB,
 ) -> ItineraryBuildOut:
-    trip = await _get_radius_trip(trip_id, current_user.id, db)
+    trip = await _get_radius_trip(trip_id, current_user, db, TripRole.EDITOR)
 
     if trip.max_drive_minutes is None:
         raise HTTPException(
@@ -440,6 +456,8 @@ async def build_itinerary(
             wp.drive_seconds_from_prev = legs[i]["drive_seconds"]
             wp.distance_meters_from_prev = legs[i]["distance_meters"]
 
+    await touch_trip(db, trip, current_user, ("itinerary_built", f"{display_name(current_user)} built a day itinerary"))
+
     await db.commit()
     db.expire_all()
 
@@ -488,7 +506,7 @@ async def deselect_suggestion(
     current_user: CurrentUser,
     db: DB,
 ) -> RadiusSuggestionOut:
-    await _get_radius_trip(trip_id, current_user.id, db)
+    trip = await _get_radius_trip(trip_id, current_user, db, TripRole.EDITOR)
 
     result = await db.execute(
         select(RadiusSuggestion).where(
@@ -521,6 +539,8 @@ async def deselect_suggestion(
         )
         for remaining_wp in remaining.scalars().all():
             remaining_wp.position -= 1
+
+    await touch_trip(db, trip, current_user, ("stops_selected", f"{display_name(current_user)} removed a selected stop"))
 
     await db.commit()
     await db.refresh(suggestion)

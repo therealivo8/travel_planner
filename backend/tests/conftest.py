@@ -25,7 +25,7 @@ async def clean_db(monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[None]:
         await db.execute(
             text(
                 "TRUNCATE api_usage_daily, user_action_daily, isochrone_cache, "
-                "discovery_cache, weather_cache, password_reset_tokens, users CASCADE"
+                "discovery_cache, weather_cache, password_reset_tokens, pending_object_deletes, users CASCADE"
             )
         )
         await db.commit()

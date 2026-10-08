@@ -7,7 +7,7 @@ A web application for planning car road trips. Users create trips in one of two 
 
 Both modes go beyond simple point-A-to-point-B navigation: point-to-point trips can discover stops *along the route* within an acceptable detour, and radius trips can auto-build a time-budgeted day itinerary rather than just a naive stop list.
 
-**Tech stack**: Next.js 15 (App Router) · FastAPI · PostgreSQL 16 · OpenAPI 3.1 · Anthropic Claude
+**Tech stack**: Next.js 15 (App Router) · FastAPI · PostgreSQL 16 · OpenAPI 3.1
 
 ---
 
@@ -21,10 +21,10 @@ Both modes go beyond simple point-A-to-point-B navigation: point-to-point trips 
 | 3 | [phase-3-point-to-point-routing.md](./phase-3-point-to-point-routing.md) | Phase 2 | Maps integration, route calculation, interactive map UI |
 | 4 | [phase-4-radius-mode.md](./phase-4-radius-mode.md) | Phase 3 | Isochrone, POI discovery, radius trip flow |
 | 5 | [phase-5-trip-management.md](./phase-5-trip-management.md) | Phase 4 | Itinerary builder, sharing, PDF export, dashboard |
-| 6 | [phase-6-llm-integration.md](./phase-6-llm-integration.md) | Phase 5 | Claude AI — natural language planning, suggestions, chat. **Mostly superseded by Phase 18** (features 1, 2, 4 re-scoped; 3 dropped; 5 chat deferred) |
+| 6 | [phase-6-llm-integration.md](./phase-6-llm-integration.md) | Phase 5 | **Shelved — AI features are not planned for now.** Kept only as a record if they are revisited. Nothing from it is built |
 | 7 | [phase-7-corridor-and-itinerary-optimization.md](./phase-7-corridor-and-itinerary-optimization.md) | Phase 5 | Corridor stop discovery (point-to-point), radius itinerary optimization |
 | 8 | [phase-8-hardening-and-bugfixes.md](./phase-8-hardening-and-bugfixes.md) | Phase 7 | Sign-out, token refresh, rate-limit fix, PDF injection fix, prod secret-key guard, error-detail leakage |
-| 9 | [phase-9-suggest-stops-and-navigation.md](./phase-9-suggest-stops-and-navigation.md) | Phase 7, Phase 8 | AI suggest-stops (Phase 6 slice; **Part A superseded by Phase 18**), global nav + sign-out UI, itinerary board persistence fixes |
+| 9 | [phase-9-suggest-stops-and-navigation.md](./phase-9-suggest-stops-and-navigation.md) | Phase 7, Phase 8 | AI suggest-stops (**Part A shelved, not built**), global nav + sign-out UI, itinerary board persistence fixes |
 | 10 | [phase-10-security-hardening-round-2.md](./phase-10-security-hardening-round-2.md) | Phase 9 | Rate-limit auth/export endpoints, Sentry + structured security logging + alerting, CI lockfile pinning, `next` upgrade, input bounds |
 | 11 | [phase-11-production-deployment.md](./phase-11-production-deployment.md) | Phase 10 | Deploy to Railway (backend + Postgres) + Vercel (frontend), secrets inventory, prod guardrails, deployment runbook |
 | 12 | [phase-12-resume-relevant-devops-practices.md](./phase-12-resume-relevant-devops-practices.md) | Phase 11 | Terraform IaC for Railway/Vercel, CI/CD pipeline that gates deploy on tests, real backend/frontend test suites, external-reader repo documentation |
@@ -33,7 +33,7 @@ Both modes go beyond simple point-A-to-point-B navigation: point-to-point trips 
 | 15 | [phase-15-account-onboarding-and-polish.md](./phase-15-account-onboarding-and-polish.md) | Phase 14 | Settings (units, home address, password change, export, delete account), password reset via Resend, zero-API demo trip, toasts/404/error pages, mobile pass, privacy/terms + attribution |
 | 16 | [phase-16-trip-logistics-toolkit.md](./phase-16-trip-logistics-toolkit.md) | Phase 13 (15 optional) | Fuel-cost estimate + expense tracker, Open-Meteo weather per day + sunset warning, packing checklist, "Open in Google/Apple Maps" deep links, .ics/.gpx export — **no Google/ORS calls** |
 | 17 | [phase-17-on-the-road-and-trip-memories.md](./phase-17-on-the-road-and-trip-memories.md) | Phase 15, 16 | PWA + offline itinerary, Today view with check-ins, journal + photos on Cloudflare R2, trip recap, "My Map" of all trips, polyline SVG thumbnails + `next/og` share previews (no Static Maps) |
-| 18 | [phase-18-lean-ai-layer.md](./phase-18-lean-ai-layer.md) | Phase 14 (16 for packing) | Cost-bounded Claude features: natural-language trip creation, AI suggest-stops over cached candidates, cached trip narrative, packing suggestions. **Supersedes Phase 6 features 1/2/4 and Phase 9 Part A; Phase 6 chat deferred** |
+| 18 | *(removed)* | — | The AI layer was dropped; the number is left unused so Phase 19 and its cross-references stay stable |
 | 19 | [phase-19-collaborative-trips.md](./phase-19-collaborative-trips.md) | Phase 14, 15 | Consolidate the 8 copies of trip-ownership checks, trip members (owner/editor/viewer) via invite links, stop voting, comments, optimistic concurrency + 20s polling, activity feed |
 
 ---
@@ -63,12 +63,11 @@ Phase 11 ── Phase 14 (API Budget & Caching)  ← do first
                 ├── Phase 15 (Account, Onboarding & Polish)
                 │       ├── Phase 17 (On the Road & Memories) ← also needs 16
                 │       └── Phase 19 (Collaborative Trips)
-                └── Phase 18 (Lean AI Layer)
 Phase 13 ── Phase 16 (Trip Logistics Toolkit, zero API cost) ── Phase 17
 ```
 
-Suggested order: **14 → 16 → 15 → 17 → 18 → 19**. Phase 16 is cheap and very visible, so it can
-start as soon as 13 is done; 18 and 19 are the largest and can swap based on interest.
+Suggested order: **14 → 16 → 15 → 17 → 19**. Phase 16 is cheap and very visible, so it can
+start as soon as 13 is done; 19 is the largest.
 
 Each phase is designed to be independently workable in a single agent session with a focused context window.
 
@@ -79,7 +78,6 @@ Each phase is designed to be independently workable in a single agent session wi
 |---|---|---|
 | Google Maps Platform | Phase 3, 4 | Geocoding, Places Autocomplete, Routes API, Nearby Search, Distance Matrix, Static Maps |
 | OpenRouteService | Phase 4 | Isochrone (drive-time boundary) generation — free Standard plan: 500 isochrones/day, 20/min |
-| Anthropic (Claude) | Phase 18 (supersedes 6) | LLM — trip creation, suggest-stops, narrative, packing |
 | Open-Meteo | Phase 16 | Weather forecast + sunrise/sunset (free, no key, non-commercial) |
 | Google Maps URLs | Phase 16 | Navigation deep links (free, no key, not billed) |
 | Resend | Phase 15, 19 | Password-reset and invite email (free tier 3k/month) |
@@ -96,5 +94,3 @@ Per-feature call counts, free-tier capacity, and the monthly budget are in
 - **Full DB schema in Phase 2**: all tables are created upfront to avoid destructive migrations in later phases.
 - **Refresh token in httpOnly cookie**: keeps the long-lived token out of JS memory/localStorage.
 - **Maps API key server-side only**: frontend never receives the API key; a proxy endpoint handles geocoding.
-- **Tool use for LLM outputs**: Claude never returns free-text that the backend parses — always structured tool calls.
-- **Prompt caching on all LLM calls**: large stable context blocks (trip data, system prompts) are cached to reduce cost and latency.

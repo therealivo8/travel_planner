@@ -9,6 +9,27 @@ import React, {
   useState,
 } from "react";
 import { setApiToken } from "@/lib/api";
+import { clearOfflineData } from "@/lib/offline";
+
+const CACHED_USER_KEY = "rtp-user";
+
+function readCachedUser(): AuthUser | null {
+  try {
+    const raw = localStorage.getItem(CACHED_USER_KEY);
+    return raw ? (JSON.parse(raw) as AuthUser) : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeCachedUser(user: AuthUser | null) {
+  try {
+    if (user) localStorage.setItem(CACHED_USER_KEY, JSON.stringify(user));
+    else localStorage.removeItem(CACHED_USER_KEY);
+  } catch {
+    /* private mode: offline sign-in just isn't remembered */
+  }
+}
 
 export interface AuthUser {
   id: string;
@@ -64,7 +85,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) return null;
-      return res.json() as Promise<AuthUser>;
+      const user = (await res.json()) as AuthUser;
+      writeCachedUser(user);
+      return user;
     } catch {
       return null;
     }
@@ -90,7 +113,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           return;
         }
       } catch {
-        /* no-op */
+        // Network failure while offline: keep the user signed in with their last-known
+        // profile so saved trips open. (A 401 above falls through to signed-out instead.)
+        const cached = typeof navigator !== "undefined" && !navigator.onLine ? readCachedUser() : null;
+        if (cached && !cancelled && !loggedInRef.current) {
+          setState({ user: cached, accessToken: null, isLoading: false });
+          return;
+        }
       }
       if (!cancelled && !loggedInRef.current) {
         setState({ user: null, accessToken: null, isLoading: false });
@@ -148,6 +177,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 
   const setUser = useCallback((user: AuthUser) => {
+    writeCachedUser(user);
     setState((prev) => ({ ...prev, user }));
   }, []);
 
@@ -160,6 +190,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     loggedInRef.current = false;
     tokenRef.current = null;
     setApiToken(null);
+    writeCachedUser(null);
+    void clearOfflineData(); // saved trips are private data in Cache Storage
     setState({ user: null, accessToken: null, isLoading: false });
   }, []);
 

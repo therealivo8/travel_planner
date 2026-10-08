@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useCallback, useEffect, useRef, useState } from "react";
+import { createContext, use, useCallback, useContext, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -61,13 +61,64 @@ import { PageShell } from "@/components/layout/PageShell";
 import { WeatherChip } from "@/components/logistics/WeatherChip";
 import { NavButtons } from "@/components/logistics/NavButtons";
 import { useDayWeather, useTripNavigation } from "@/hooks/useTripExtras";
+import { useTripChanges } from "@/hooks/useTripChanges";
+import { useVotes } from "@/hooks/useVotes";
+import { useCommentCounts } from "@/hooks/useCommentCounts";
+import { ChangesBanner } from "@/components/trips/ChangesBanner";
+import { CommentBadge } from "@/components/collab/CommentsSheet";
+import { VoteButtons } from "@/components/collab/VoteButtons";
 import type {
+  Trip,
+  VoteTally,
   DayNavigation,
   DayWeather,
   Itinerary,
   ItineraryDay,
   ItineraryWaypoint,
 } from "@/types";
+
+// ── collaboration context ──────────────────────────────────────────────────
+// Read by the day/unscheduled columns so role gating, votes and comment counts don't have
+// to be threaded through every prop.
+
+interface Collab {
+  tripId: string;
+  /** Viewers see the board but can't change it. */
+  readOnly: boolean;
+  /** The trip has other members: show votes and comments. */
+  shared: boolean;
+  tallies: Record<string, VoteTally>;
+  vote: (targetId: string, value: -1 | 0 | 1) => void;
+  countFor: (kind: "day" | "waypoint", id: string) => number;
+  reloadCounts: () => void;
+}
+
+const CollabContext = createContext<Collab | null>(null);
+
+function useCollab(): Collab {
+  const ctx = useContext(CollabContext);
+  if (!ctx) throw new Error("CollabContext missing");
+  return ctx;
+}
+
+/** Votes and the comment badge shown under a stop when the trip has collaborators. */
+function WaypointExtras({ waypoint }: { waypoint: ItineraryWaypoint }) {
+  const c = useCollab();
+  if (!c.shared) return null;
+  return (
+    <div className="mt-1 flex flex-wrap items-center gap-1.5 px-1">
+      <VoteButtons tally={c.tallies[waypoint.id]} onVote={(v) => c.vote(waypoint.id, v)} />
+      <CommentBadge
+        tripId={c.tripId}
+        kind="waypoint"
+        targetId={waypoint.id}
+        title={waypoint.label || waypoint.address}
+        count={c.countFor("waypoint", waypoint.id)}
+        onChanged={c.reloadCounts}
+      />
+    </div>
+  );
+}
 
 // ── constants ──────────────────────────────────────────────────────────────
 
@@ -341,6 +392,8 @@ function DayColumn({
   onUnassign,
   onAssignToNewDay,
 }: DayColumnProps) {
+  const collab = useCollab();
+  const readOnly = collab.readOnly;
   const [editingTitle, setEditingTitle] = useState(false);
   const [draft, setDraft] = useState(day.title ?? "");
   const [showNotes, setShowNotes] = useState(Boolean(day.notes));
@@ -385,7 +438,8 @@ function DayColumn({
             />
           ) : (
             <button
-              onClick={() => setEditingTitle(true)}
+              onClick={() => !readOnly && setEditingTitle(true)}
+              disabled={readOnly}
               className="text-xs font-medium text-neutral-700 hover:text-neutral-900 truncate"
             >
               {day.title || <span className="text-neutral-400 italic">Add title</span>}
@@ -393,8 +447,20 @@ function DayColumn({
           )}
         </div>
         <div className="flex items-center gap-0.5 shrink-0">
+          {collab.shared && (
+            <CommentBadge
+              tripId={collab.tripId}
+              kind="day"
+              targetId={day.id}
+              title={`Day ${day.day_number}`}
+              count={collab.countFor("day", day.id)}
+              onChanged={collab.reloadCounts}
+              className="mr-1 inline-flex items-center gap-1 rounded-full bg-white px-1.5 py-0.5 text-[11px] text-neutral-600"
+            />
+          )}
           <button
             onClick={() => onOptimize(day.id)}
+            hidden={readOnly}
             disabled={optimizing || day.waypoints.length < 3}
             title={
               day.waypoints.length < 3
@@ -416,6 +482,7 @@ function DayColumn({
           </button>
           <button
             onClick={() => onDelete(day.id)}
+            hidden={readOnly}
             title="Delete day"
             className="h-6 w-6 flex items-center justify-center rounded hover:bg-neutral-200 text-neutral-400 hover:text-red-500"
           >
@@ -428,6 +495,7 @@ function DayColumn({
         <CalendarDays className="h-3 w-3 shrink-0" />
         <input
           type="date"
+          disabled={readOnly}
           value={day.date ?? ""}
           onChange={(e) => onUpdateDate(day.id, e.target.value)}
           className="text-xs text-neutral-500 bg-transparent border border-transparent hover:border-neutral-300 rounded px-1 py-0.5 min-w-0 flex-1"
@@ -440,7 +508,8 @@ function DayColumn({
         <Textarea
           value={notesDraft}
           onChange={(e) => setNotesDraft(e.target.value)}
-          onBlur={() => onUpdateNotes(day.id, notesDraft)}
+          onBlur={() => !readOnly && onUpdateNotes(day.id, notesDraft)}
+          readOnly={readOnly}
           placeholder="Notes for this day…"
           rows={3}
           className="text-xs bg-white resize-none"
@@ -456,20 +525,24 @@ function DayColumn({
           } ${isOver ? "bg-primary-50 ring-2 ring-primary-400 ring-inset" : ""}`}
         >
           {day.waypoints.map((wp) => (
-            <SortableWaypointChip
-              key={wp.id}
-              waypoint={wp}
-              onUpdateArrivalTime={onUpdateArrivalTime}
-              assignMenu={
-                <AssignMenu
-                  days={allDays}
-                  currentDayId={day.id}
-                  onAssign={(target) => onAssign(wp.id, target)}
-                  onUnassign={() => onUnassign(wp.id, day.id)}
-                  onAssignToNewDay={() => onAssignToNewDay(wp.id)}
-                />
-              }
-            />
+            <div key={wp.id}>
+              <SortableWaypointChip
+                waypoint={wp}
+                onUpdateArrivalTime={readOnly ? undefined : onUpdateArrivalTime}
+                assignMenu={
+                  readOnly ? undefined : (
+                    <AssignMenu
+                      days={allDays}
+                      currentDayId={day.id}
+                      onAssign={(target) => onAssign(wp.id, target)}
+                      onUnassign={() => onUnassign(wp.id, day.id)}
+                      onAssignToNewDay={() => onAssignToNewDay(wp.id)}
+                    />
+                  )
+                }
+              />
+              <WaypointExtras waypoint={wp} />
+            </div>
           ))}
           {day.waypoints.length === 0 && (
             <div className="flex-1 flex items-center justify-center text-xs text-neutral-400 italic py-3">
@@ -513,6 +586,7 @@ function UnscheduledColumn({
   onAssign,
   onAssignToNewDay,
 }: UnscheduledColumnProps) {
+  const readOnly = useCollab().readOnly;
   // Dragging a scheduled stop back out needs a real drop target here too.
   const { setNodeRef, isOver } = useDroppable({
     id: UNSCHEDULED,
@@ -525,7 +599,7 @@ function UnscheduledColumn({
         Unscheduled ({waypoints.length})
       </p>
 
-      {waypoints.length > 0 && (
+      {waypoints.length > 0 && !readOnly && (
         <Button
           variant="outline"
           size="sm"
@@ -546,19 +620,23 @@ function UnscheduledColumn({
           }`}
         >
           {waypoints.map((wp) => (
-            <SortableWaypointChip
-              key={wp.id}
-              waypoint={wp}
-              assignMenu={
-                <AssignMenu
-                  days={days}
-                  currentDayId={null}
-                  onAssign={(target) => onAssign(wp.id, target)}
-                  onUnassign={() => {}}
-                  onAssignToNewDay={() => onAssignToNewDay(wp.id)}
-                />
-              }
-            />
+            <div key={wp.id}>
+              <SortableWaypointChip
+                waypoint={wp}
+                assignMenu={
+                  readOnly ? undefined : (
+                    <AssignMenu
+                      days={days}
+                      currentDayId={null}
+                      onAssign={(target) => onAssign(wp.id, target)}
+                      onUnassign={() => {}}
+                      onAssignToNewDay={() => onAssignToNewDay(wp.id)}
+                    />
+                  )
+                }
+              />
+              <WaypointExtras waypoint={wp} />
+            </div>
           ))}
           {waypoints.length === 0 && (
             <p className="text-xs text-neutral-400 italic py-4 text-center">
@@ -581,6 +659,7 @@ export default function ItineraryPage({ params }: { params: Promise<{ trip_id: s
   const { user, isLoading: authLoading } = useAuth();
 
   const [itinerary, setItinerary] = useState<Itinerary | null>(null);
+  const [trip, setTrip] = useState<Trip | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeWaypoint, setActiveWaypoint] = useState<ItineraryWaypoint | null>(null);
@@ -596,6 +675,19 @@ export default function ItineraryPage({ params }: { params: Promise<{ trip_id: s
     // Space/Enter picks a chip up, arrows move it, Space drops it.
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
+
+  // Role and collaboration state. Loading the trip also records its version, which this
+  // page's edits send as If-Match so a stale tab can't overwrite a collaborator.
+  useEffect(() => {
+    if (authLoading || !user) return;
+    api.get<Trip>(`/trips/${trip_id}`).then(setTrip).catch(() => undefined);
+  }, [authLoading, user, trip_id]);
+  const role = trip?.my_role ?? "owner";
+  const readOnly = role === "viewer";
+  const shared = (trip?.member_count ?? 0) > 0 || role !== "owner";
+  const changes = useTripChanges(trip_id, trip?.version, shared);
+  const { tallies, vote } = useVotes(trip_id, "waypoint", shared);
+  const { countFor, reload: reloadCounts } = useCommentCounts(trip_id, shared);
 
   // Weather depends on each day's date and last stop; nav links on the order of every stop.
   const days = itinerary?.days;
@@ -1019,7 +1111,7 @@ export default function ItineraryPage({ params }: { params: Promise<{ trip_id: s
             <h1 className="text-lg font-semibold text-neutral-900">Itinerary Builder</h1>
           </div>
           <div className="flex items-center gap-2">
-            <Button onClick={handleAddDay} size="sm" variant="outline">
+            <Button onClick={handleAddDay} size="sm" variant="outline" hidden={readOnly}>
               <Plus className="h-4 w-4 mr-1.5" />
               Add Day
             </Button>
@@ -1038,9 +1130,31 @@ export default function ItineraryPage({ params }: { params: Promise<{ trip_id: s
         </div>
       </div>
 
+      {changes && (
+        <div className="px-4 pt-4">
+          <ChangesBanner activity={changes.activity} onReload={() => window.location.reload()} />
+        </div>
+      )}
+      {readOnly && (
+        <p className="mx-4 mt-4 rounded-lg bg-neutral-100 px-3 py-2 text-sm text-neutral-600">
+          View only: you can see the plan, vote and comment, but not change it.
+        </p>
+      )}
+
       <div className="flex flex-1 min-h-0 overflow-hidden">
+        <CollabContext.Provider
+          value={{
+            tripId: trip_id,
+            readOnly,
+            shared,
+            tallies,
+            vote,
+            countFor,
+            reloadCounts,
+          }}
+        >
         <DndContext
-          sensors={sensors}
+          sensors={readOnly ? [] : sensors}
           // pointerWithin follows the cursor rather than the dragged chip's centre.
           // With the taller two-row chips, closestCenter would resolve against the
           // overlay's midpoint and miss the column the user is actually pointing at;
@@ -1092,7 +1206,7 @@ export default function ItineraryPage({ params }: { params: Promise<{ trip_id: s
                         ? `Add a day, then drag any of your ${itinerary.unscheduled_waypoints.length} stop(s) onto it — or use "Distribute across days".`
                         : "Add a day to start building your itinerary."}
                     </p>
-                    <Button onClick={handleAddDay} size="sm" variant="outline">
+                    <Button onClick={handleAddDay} size="sm" variant="outline" hidden={readOnly}>
                       <Plus className="h-4 w-4 mr-1.5" />
                       Add Day
                     </Button>
@@ -1124,6 +1238,7 @@ export default function ItineraryPage({ params }: { params: Promise<{ trip_id: s
             {activeWaypoint && <WaypointChip waypoint={activeWaypoint} isOverlay />}
           </DragOverlay>
         </DndContext>
+        </CollabContext.Provider>
         {weather && Object.keys(weather).length > 0 && (
           <p className="shrink-0 px-4 py-2 text-center text-[11px] text-neutral-400">
             <a

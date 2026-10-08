@@ -74,20 +74,6 @@ There is no billing, so the risk is hitting the limit rather than paying. When t
 reached, radius mode stops working for everyone until UTC midnight. The `2,000/day` figure in
 `maps-provider-decision.md` is the limit for the *directions* endpoint, not isochrones.
 
-### Anthropic Claude (if Phase 18 is built)
-
-Prices per million tokens as of 2026-10:
-
-| Model | Input | Output | Cache read |
-|---|---|---|---|
-| Claude Opus 5.5 (`claude-opus-5-5`) | $4 | $20 | $0.20 |
-| Claude Sonnet 5.5 (`claude-sonnet-5-5`) | $2 | $10 | $0.20 |
-| Claude Haiku 4.5 (`claude-haiku-4-5`) | $1 | $5 | — |
-
-A typical structured call in this app (about 3k tokens in and 800 out) costs about **$0.03 on Opus
-5.5** or **$0.014 on Sonnet 5.5**. 200 AI actions a month comes to roughly **$3–6**. Set a monthly
-spend limit in the Anthropic Console as a hard backstop.
-
 ### Other services proposed in Phases 15–19 (all have free tiers)
 
 | Service | Used for | Free tier | Phase |
@@ -103,7 +89,7 @@ spend limit in the Anthropic Console as a hard backstop.
 
 | Scenario | Expected monthly cost |
 |---|---|
-| You plus a few friends, Phase 14 guardrails in place | **$5–8** (Railway + domain + a little Claude) |
+| You plus a few friends, Phase 14 guardrails in place | **$5–8** (Railway + domain) |
 | Same usage, *without* Phase 14 | $5 plus unbounded Google overage. A single run of heavy corridor testing can cost $10–40. |
 
 ### Rules for every future feature

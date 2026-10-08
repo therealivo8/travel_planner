@@ -14,7 +14,7 @@ from starlette.concurrency import run_in_threadpool
 
 from app.core.deps import CurrentUser
 from app.core.limiter import limiter
-from app.core.trips import get_owned_trip
+from app.core.trip_access import TripRole, get_trip_for
 from app.db.session import get_db
 from app.models.logistics import WeatherCache
 from app.models.trip import ItineraryDay, Trip
@@ -120,10 +120,11 @@ async def get_trip_weather(db: AsyncSession, trip: Trip) -> dict[str, dict[str, 
 async def trip_weather(
     request: Request, trip_id: uuid.UUID, current_user: CurrentUser, db: DB
 ) -> dict[str, dict[str, Any]]:
-    trip = await get_owned_trip(
-        db,
+    trip = await get_trip_for(
         trip_id,
-        current_user.id,
-        selectinload(Trip.itinerary_days).selectinload(ItineraryDay.waypoints),
+        current_user,
+        db,
+        TripRole.VIEWER,
+        load=(selectinload(Trip.itinerary_days).selectinload(ItineraryDay.waypoints),),
     )
     return await get_trip_weather(db, trip)

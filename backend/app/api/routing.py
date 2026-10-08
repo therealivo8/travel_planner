@@ -2,7 +2,7 @@ import logging
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -10,6 +10,7 @@ from sqlalchemy.orm import selectinload
 from app.core import budget
 from app.core.deps import CurrentUser
 from app.core.limiter import limiter
+from app.core.trip_access import TripRole, display_name, get_trip_for, touch_trip
 from app.db.session import get_db
 from app.models.trip import Trip
 from app.schemas.trip import GeocodeResult, RouteOut, TripOut
@@ -22,18 +23,6 @@ router = APIRouter(tags=["routing"])
 DB = Annotated[AsyncSession, Depends(get_db)]
 
 
-async def _get_owned_trip(trip_id: uuid.UUID, user_id: uuid.UUID, db: AsyncSession) -> Trip:
-    result = await db.execute(
-        select(Trip)
-        .where(Trip.id == trip_id, Trip.user_id == user_id)
-        .options(selectinload(Trip.waypoints))
-    )
-    trip = result.scalar_one_or_none()
-    if trip is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Trip not found")
-    return trip
-
-
 @router.post("/trips/{trip_id}/calculate-route", response_model=TripOut)
 @limiter.limit("20/hour")
 async def calculate_route(
@@ -42,7 +31,9 @@ async def calculate_route(
     current_user: CurrentUser,
     db: DB,
 ) -> TripOut:
-    trip = await _get_owned_trip(trip_id, current_user.id, db)
+    trip = await get_trip_for(
+        trip_id, current_user, db, TripRole.EDITOR, load=(selectinload(Trip.waypoints),)
+    )
 
     if trip.mode != "point_to_point":
         raise HTTPException(status_code=400, detail="Route calculation is only for point_to_point trips")
@@ -84,6 +75,8 @@ async def calculate_route(
             wp.drive_seconds_from_prev = legs[i]["drive_seconds"]
             wp.distance_meters_from_prev = legs[i]["distance_meters"]
 
+    await touch_trip(db, trip, current_user, ("route_calculated", f"{display_name(current_user)} recalculated the route"))
+
     await db.commit()
     await db.refresh(trip)
     refreshed = await db.execute(
@@ -98,7 +91,9 @@ async def get_route(
     current_user: CurrentUser,
     db: DB,
 ) -> RouteOut:
-    trip = await _get_owned_trip(trip_id, current_user.id, db)
+    trip = await get_trip_for(
+        trip_id, current_user, db, TripRole.VIEWER, load=(selectinload(Trip.waypoints),)
+    )
 
     if trip.route_polyline is None:
         raise HTTPException(status_code=404, detail="Route has not been calculated yet")

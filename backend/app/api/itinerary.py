@@ -9,8 +9,9 @@ from sqlalchemy.orm import selectinload
 from app.core import budget
 from app.core.deps import CurrentUser
 from app.core.limiter import limiter
+from app.core.trip_access import TripRole, display_name, get_trip_for, touch_trip
 from app.db.session import get_db
-from app.models.trip import ItineraryDay, Trip, Waypoint
+from app.models.trip import ItineraryDay, Waypoint
 from app.schemas.trip import (
     AssignWaypointsRequest,
     ItineraryDayCreate,
@@ -25,16 +26,6 @@ from app.services import itinerary_builder, places
 router = APIRouter(prefix="/trips/{trip_id}/itinerary", tags=["itinerary"])
 
 DB = Annotated[AsyncSession, Depends(get_db)]
-
-
-async def _get_owned_trip(trip_id: uuid.UUID, user_id: uuid.UUID, db: AsyncSession) -> Trip:
-    result = await db.execute(
-        select(Trip).where(Trip.id == trip_id, Trip.user_id == user_id)
-    )
-    trip = result.scalar_one_or_none()
-    if trip is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Trip not found")
-    return trip
 
 
 async def _load_itinerary(trip_id: uuid.UUID, db: AsyncSession) -> tuple[list[ItineraryDay], list[Waypoint]]:
@@ -64,6 +55,10 @@ def _waypoint_to_itinerary_out(wp: Waypoint) -> ItineraryWaypointOut:
         day_position=wp.day_position,
         scheduled_arrival_time=wp.scheduled_arrival_time,
         drive_seconds_from_prev=wp.drive_seconds_from_prev,
+        stop_duration_minutes=wp.stop_duration_minutes,
+        notes=wp.notes,
+        visited_at=wp.visited_at,
+        skipped=wp.skipped,
     )
 
 
@@ -90,7 +85,7 @@ async def get_itinerary(
     current_user: CurrentUser,
     db: DB,
 ) -> ItineraryOut:
-    await _get_owned_trip(trip_id, current_user.id, db)
+    await get_trip_for(trip_id, current_user, db, TripRole.VIEWER)
     days, unscheduled = await _load_itinerary(trip_id, db)
     return ItineraryOut(
         trip_id=trip_id,
@@ -106,7 +101,7 @@ async def create_day(
     current_user: CurrentUser,
     db: DB,
 ) -> ItineraryDayOut:
-    await _get_owned_trip(trip_id, current_user.id, db)
+    trip = await get_trip_for(trip_id, current_user, db, TripRole.EDITOR)
 
     # Determine next day_number
     result = await db.execute(
@@ -126,6 +121,7 @@ async def create_day(
         notes=body.notes,
     )
     db.add(day)
+    await touch_trip(db, trip, current_user, ("day_added", f"{display_name(current_user)} added Day {next_number}"))
     await db.commit()
     await db.refresh(day)
 
@@ -145,7 +141,7 @@ async def update_day(
     current_user: CurrentUser,
     db: DB,
 ) -> ItineraryDayOut:
-    await _get_owned_trip(trip_id, current_user.id, db)
+    trip = await get_trip_for(trip_id, current_user, db, TripRole.EDITOR)
 
     result = await db.execute(
         select(ItineraryDay)
@@ -158,6 +154,7 @@ async def update_day(
 
     for field, value in body.model_dump(exclude_unset=True).items():
         setattr(day, field, value)
+    await touch_trip(db, trip, current_user, ("day_updated", f"{display_name(current_user)} updated a day"))
     await db.commit()
     await db.refresh(day)
 
@@ -176,7 +173,7 @@ async def delete_day(
     current_user: CurrentUser,
     db: DB,
 ) -> None:
-    await _get_owned_trip(trip_id, current_user.id, db)
+    trip = await get_trip_for(trip_id, current_user, db, TripRole.EDITOR)
 
     result = await db.execute(
         select(ItineraryDay).where(ItineraryDay.id == day_id, ItineraryDay.trip_id == trip_id)
@@ -193,6 +190,7 @@ async def delete_day(
     )
 
     await db.delete(day)
+    await touch_trip(db, trip, current_user, ("day_removed", f"{display_name(current_user)} removed a day"))
     await db.commit()
 
     # Renumber remaining days
@@ -204,6 +202,7 @@ async def delete_day(
     remaining = list(remaining_result.scalars().all())
     for i, d in enumerate(remaining, start=1):
         d.day_number = i
+    await touch_trip(db, trip, current_user, ("day_removed", f"{display_name(current_user)} removed a day"))
     await db.commit()
 
 
@@ -215,7 +214,7 @@ async def assign_waypoints(
     current_user: CurrentUser,
     db: DB,
 ) -> ItineraryDayOut:
-    await _get_owned_trip(trip_id, current_user.id, db)
+    trip = await get_trip_for(trip_id, current_user, db, TripRole.EDITOR)
 
     result = await db.execute(
         select(ItineraryDay)
@@ -235,6 +234,7 @@ async def assign_waypoints(
             .where(Waypoint.id.in_(body.waypoint_ids), Waypoint.trip_id == trip_id)
             .values(**values)
         )
+        await touch_trip(db, trip, current_user, ("itinerary_changed", f"{display_name(current_user)} rearranged stops in the itinerary"))
         await db.commit()
 
     if body.ordered_waypoint_ids:
@@ -244,6 +244,7 @@ async def assign_waypoints(
                 .where(Waypoint.id == wp_id, Waypoint.trip_id == trip_id)
                 .values(day_position=pos)
             )
+        await touch_trip(db, trip, current_user, ("itinerary_changed", f"{display_name(current_user)} rearranged stops in the itinerary"))
         await db.commit()
 
     result2 = await db.execute(
@@ -262,7 +263,7 @@ async def unassign_waypoint(
     current_user: CurrentUser,
     db: DB,
 ) -> ItineraryDayOut:
-    await _get_owned_trip(trip_id, current_user.id, db)
+    trip = await get_trip_for(trip_id, current_user, db, TripRole.EDITOR)
 
     result = await db.execute(
         select(ItineraryDay).where(ItineraryDay.id == day_id, ItineraryDay.trip_id == trip_id)
@@ -279,6 +280,7 @@ async def unassign_waypoint(
         )
         .values(itinerary_day_id=None, scheduled_arrival_time=None, day_position=None)
     )
+    await touch_trip(db, trip, current_user, ("itinerary_changed", f"{display_name(current_user)} moved a stop out of a day"))
     await db.commit()
 
     result2 = await db.execute(
@@ -297,7 +299,7 @@ async def set_arrival_time(
     current_user: CurrentUser,
     db: DB,
 ) -> ItineraryWaypointOut:
-    await _get_owned_trip(trip_id, current_user.id, db)
+    trip = await get_trip_for(trip_id, current_user, db, TripRole.EDITOR)
 
     result = await db.execute(
         select(Waypoint).where(Waypoint.id == waypoint_id, Waypoint.trip_id == trip_id)
@@ -307,6 +309,7 @@ async def set_arrival_time(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Waypoint not found")
 
     waypoint.scheduled_arrival_time = body.scheduled_arrival_time
+    await touch_trip(db, trip, current_user, ("itinerary_changed", f"{display_name(current_user)} changed a stop\'s arrival time"))
     await db.commit()
     await db.refresh(waypoint)
     return _waypoint_to_itinerary_out(waypoint)
@@ -325,7 +328,7 @@ async def optimize_day(
 
     Rate-limited because it calls the Google distance matrix once per stop.
     """
-    await _get_owned_trip(trip_id, current_user.id, db)
+    trip = await get_trip_for(trip_id, current_user, db, TripRole.EDITOR)
 
     result = await db.execute(
         select(ItineraryDay)
@@ -378,6 +381,7 @@ async def optimize_day(
         # Keep the per-leg drive time consistent with the new sequence. The first
         # stop has no in-day predecessor, so its leg is cleared.
         wp.drive_seconds_from_prev = leg
+    await touch_trip(db, trip, current_user, ("day_optimized", f"{display_name(current_user)} reordered a day to cut drive time"))
     await db.commit()
 
     result2 = await db.execute(

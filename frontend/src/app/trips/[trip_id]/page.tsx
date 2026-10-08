@@ -7,6 +7,15 @@ import { notFound, useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { useConfirm } from "@/components/common/ConfirmProvider";
 import { usePageTitle } from "@/hooks/usePageTitle";
+import { saveTripForOffline } from "@/lib/offline";
+import { useTripChanges } from "@/hooks/useTripChanges";
+import { useVotes } from "@/hooks/useVotes";
+import { useCommentCounts } from "@/hooks/useCommentCounts";
+import { ChangesBanner } from "@/components/trips/ChangesBanner";
+import { MembersModal } from "@/components/trips/MembersModal";
+import { ActivityMenu } from "@/components/collab/ActivityMenu";
+import { CommentBadge } from "@/components/collab/CommentsSheet";
+import { VoteButtons } from "@/components/collab/VoteButtons";
 import {
   ArrowLeft,
   RefreshCw,
@@ -21,6 +30,10 @@ import {
   Wallet,
   Backpack,
   ChevronDown,
+  CalendarCheck,
+  BookOpen,
+  Users,
+  CloudDownload,
 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { api, getApiToken } from "@/lib/api";
@@ -66,12 +79,25 @@ export default function TripDetailPage({
 
   const [trip, setTrip] = useState<Trip | null>(null);
   usePageTitle(trip?.title);
+
+  // Collaboration: what this person may do, and whether the trip has other members at all
+  // (solo trips never poll or show vote/comment UI).
+  const role = trip?.my_role ?? "owner";
+  const isOwner = role === "owner";
+  const canEdit = role !== "viewer";
+  const shared = (trip?.member_count ?? 0) > 0 || role !== "owner";
+  const changes = useTripChanges(trip_id, trip?.version, shared);
+  const { tallies, vote } = useVotes(trip_id, "waypoint", shared);
+  const { countFor, reload: reloadCounts } = useCommentCounts(trip_id, shared);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [calculating, setCalculating] = useState(false);
   const [routeError, setRouteError] = useState<string | null>(null);
   const [showShareModal, setShowShareModal] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [savingOffline, setSavingOffline] = useState(false);
+  const [showMembers, setShowMembers] = useState(false);
+  const [dismissedComplete, setDismissedComplete] = useState(false);
   // Phones show the map collapsible above the stop list; desktop always shows it.
   const [mapOpen, setMapOpen] = useState(true);
 
@@ -162,6 +188,24 @@ export default function TripDetailPage({
       router.push("/trips");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to delete trip");
+    }
+  }
+
+  async function handleSaveOffline() {
+    setSavingOffline(true);
+    const result = await saveTripForOffline(trip_id);
+    setSavingOffline(false);
+    if (result.ok) toast.success("Saved for offline. Your itinerary, notes and weather will open without a connection.");
+    else toast.error(result.reason ?? "Couldn't save for offline");
+  }
+
+  async function handleMarkComplete() {
+    try {
+      const updated = await api.patch<Trip>(`/trips/${trip_id}`, { status: "completed" });
+      setTrip((prev) => (prev ? { ...prev, status: updated.status, ended: false, in_progress: false } : prev));
+      toast.success("Trip marked complete.");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Couldn't update the trip");
     }
   }
 
@@ -350,6 +394,7 @@ export default function TripDetailPage({
                   setDraftTitle(trip.title);
                   setEditingTitle(true);
                 }}
+                disabled={!canEdit}
                 className="flex items-center gap-1.5 group min-w-0"
               >
                 <h1 className="text-xl font-semibold text-neutral-900 truncate">{trip.title}</h1>
@@ -363,9 +408,34 @@ export default function TripDetailPage({
             >
               {trip.status}
             </Badge>
+            {trip.in_progress && (
+              <Badge className="text-xs shrink-0 bg-green-600 text-white">Trip in progress</Badge>
+            )}
           </div>
 
           <div className="flex flex-wrap items-center gap-1">
+            <Button variant="ghost" size="sm" className="gap-1.5 text-xs" asChild>
+              <Link href={`/trips/${trip_id}/today`}>
+                <CalendarCheck className="h-3.5 w-3.5" />
+                Today
+              </Link>
+            </Button>
+            <Button variant="ghost" size="sm" className="gap-1.5 text-xs" asChild>
+              <Link href={`/trips/${trip_id}/recap`}>
+                <BookOpen className="h-3.5 w-3.5" />
+                Recap
+              </Link>
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="gap-1.5 text-xs"
+              onClick={handleSaveOffline}
+              disabled={savingOffline}
+            >
+              <CloudDownload className="h-3.5 w-3.5" />
+              {savingOffline ? "Saving…" : "Save for offline"}
+            </Button>
             <Button variant="ghost" size="sm" className="gap-1.5 text-xs" asChild>
               <Link href={`/trips/${trip_id}/itinerary`}>
                 <CalendarDays className="h-3.5 w-3.5" />
@@ -378,15 +448,36 @@ export default function TripDetailPage({
                 Schedule
               </Link>
             </Button>
+            {isOwner && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="gap-1.5 text-xs"
+                onClick={() => setShowShareModal(true)}
+              >
+                <Share2 className="h-3.5 w-3.5" />
+                Share
+              </Button>
+            )}
             <Button
               variant="ghost"
               size="sm"
               className="gap-1.5 text-xs"
-              onClick={() => setShowShareModal(true)}
+              onClick={() => setShowMembers(true)}
             >
-              <Share2 className="h-3.5 w-3.5" />
-              Share
+              <Users className="h-3.5 w-3.5" />
+              {shared ? `Members (${(trip?.member_count ?? 0) + 1})` : "Invite"}
             </Button>
+            {shared && <ActivityMenu tripId={trip_id} />}
+            {shared && (
+              <CommentBadge
+                tripId={trip_id}
+                kind="trip"
+                title="Trip discussion"
+                count={countFor("trip")}
+                onChanged={reloadCounts}
+              />
+            )}
             <Button variant="ghost" size="sm" className="gap-1.5 text-xs" asChild>
               <Link href={`/trips/${trip_id}/budget`}>
                 <Wallet className="h-3.5 w-3.5" />
@@ -422,6 +513,7 @@ export default function TripDetailPage({
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
+            {isOwner && (
             <Button
               variant="ghost"
               size="icon"
@@ -431,6 +523,7 @@ export default function TripDetailPage({
             >
               <Trash2 className="h-4 w-4" />
             </Button>
+            )}
           </div>
         </div>
 
@@ -438,9 +531,41 @@ export default function TripDetailPage({
           <ShareModal
             tripId={trip_id}
             initialIsPublic={trip.is_public}
+            initialShareRecap={trip.share_recap}
             initialShareToken={trip.share_token}
             onClose={() => setShowShareModal(false)}
           />
+        )}
+
+        <MembersModal
+          tripId={trip_id}
+          myRole={role}
+          open={showMembers}
+          onOpenChange={setShowMembers}
+          onChanged={(opts) => (opts?.left ? router.push("/trips") : window.location.reload())}
+        />
+
+        {changes && <ChangesBanner activity={changes.activity} onReload={() => window.location.reload()} />}
+
+        {role === "viewer" && (
+          <p className="mb-4 rounded-lg bg-neutral-100 px-3 py-2 text-sm text-neutral-600">
+            You&apos;re a viewer on {trip.owner_name ? `${trip.owner_name}'s` : "this"} trip: you can look, vote and comment.
+          </p>
+        )}
+
+        {trip.ended && !dismissedComplete && (
+          <div
+            role="status"
+            className="mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-green-200 bg-green-50 p-3 text-sm text-green-900"
+          >
+            <p className="flex-1">Your trip&apos;s last day has passed. Mark trip complete?</p>
+            <Button size="sm" onClick={handleMarkComplete}>
+              Mark complete
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setDismissedComplete(true)}>
+              Not yet
+            </Button>
+          </div>
         )}
 
         <FirstVisitTips mode={trip.mode} />
@@ -484,7 +609,7 @@ export default function TripDetailPage({
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="gap-1.5 text-xs"
+                    className={`gap-1.5 text-xs ${canEdit ? "" : "hidden"}`}
                     onClick={handleRecalculate}
                     disabled={calculating}
                   >
@@ -511,7 +636,7 @@ export default function TripDetailPage({
                 <Button
                   variant="outline"
                   size="sm"
-                  className="gap-1.5 text-xs self-start"
+                  className={`gap-1.5 text-xs self-start ${canEdit ? "" : "hidden"}`}
                   disabled={!hasRoute}
                   title={hasRoute ? undefined : "Calculate a route to discover stops along the way"}
                   asChild={hasRoute}
@@ -530,7 +655,7 @@ export default function TripDetailPage({
               <div className="bg-white rounded-xl border border-neutral-200 p-4 flex flex-col gap-3">
                 <div className="flex items-center justify-between">
                   <p className="text-sm font-medium text-neutral-700">Radius trip</p>
-                  <Button variant="outline" size="sm" className="text-xs" asChild>
+                  <Button variant="outline" size="sm" className={`text-xs ${canEdit ? "" : "hidden"}`} asChild>
                     <Link href={`/trips/${trip_id}/discover`}>Explore more</Link>
                   </Button>
                 </div>
@@ -592,6 +717,24 @@ export default function TripDetailPage({
                   onUpdateLabel={handleUpdateLabel}
                   onUpdateStopDuration={handleUpdateStopDuration}
                   loading={calculating}
+                  readOnly={!canEdit}
+                  renderExtra={
+                    shared
+                      ? (wp) => (
+                          <div className="mt-1 flex flex-wrap items-center gap-2 px-1 pb-1">
+                            <VoteButtons tally={tallies[wp.id]} onVote={(v) => vote(wp.id, v)} />
+                            <CommentBadge
+                              tripId={trip_id}
+                              kind="waypoint"
+                              targetId={wp.id}
+                              title={wp.label ?? wp.address}
+                              count={countFor("waypoint", wp.id)}
+                              onChanged={reloadCounts}
+                            />
+                          </div>
+                        )
+                      : undefined
+                  }
                 />
               </div>
             )}

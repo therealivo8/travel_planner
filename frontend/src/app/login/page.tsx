@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { use, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { MapPin } from "lucide-react";
@@ -8,6 +8,7 @@ import { z } from "zod";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { safeNext } from "@/lib/redirect";
 import { usePageTitle } from "@/hooks/usePageTitle";
 
 const schema = z.object({
@@ -15,7 +16,12 @@ const schema = z.object({
   password: z.string().min(1, "Password is required"),
 });
 
-export default function LoginPage() {
+export default function LoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ next?: string }>;
+}) {
+  const { next } = use(searchParams);
   usePageTitle("Sign in");
   const { login, user, isLoading } = useAuth();
   const router = useRouter();
@@ -29,9 +35,9 @@ export default function LoginPage() {
   // Navigate only after auth state is committed and user is confirmed
   useEffect(() => {
     if (loginSuccess && !isLoading && user) {
-      router.push("/trips");
+      router.push(safeNext(next));
     }
-  }, [loginSuccess, isLoading, user, router]);
+  }, [loginSuccess, isLoading, user, router, next]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -127,7 +133,9 @@ export default function LoginPage() {
 
           <p className="text-sm text-center text-neutral-500 mt-6">
             Don&apos;t have an account?{" "}
-            <Link href="/register" className="text-primary-600 hover:underline font-medium">
+            <Link
+              href={next ? `/register?next=${encodeURIComponent(next)}` : "/register"}
+              className="text-primary-600 hover:underline font-medium">
               Sign up
             </Link>
           </p>

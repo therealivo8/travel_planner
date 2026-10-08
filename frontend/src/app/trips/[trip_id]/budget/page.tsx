@@ -40,6 +40,7 @@ export default function BudgetPage({ params }: { params: Promise<{ trip_id: stri
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [days, setDays] = useState<Itinerary["days"]>([]);
   const [error, setError] = useState<string | null>(null);
+  const readOnly = trip?.my_role === "viewer"; // viewers see the numbers but can't change them
 
   // Estimate inputs (strings, so a half-typed number isn't clobbered)
   const [mpg, setMpg] = useState("");
@@ -208,6 +209,7 @@ export default function BudgetPage({ params }: { params: Promise<{ trip_id: stri
                   type="number"
                   min={1}
                   step="0.5"
+                  disabled={readOnly}
                   value={mpg}
                   onChange={(e) => setMpg(e.target.value)}
                   onBlur={() => Number(mpg) > 0 && saveSettings({ vehicle_mpg: Number(mpg) })}
@@ -219,6 +221,7 @@ export default function BudgetPage({ params }: { params: Promise<{ trip_id: stri
                   type="number"
                   min={0}
                   step="0.05"
+                  disabled={readOnly}
                   value={price}
                   onChange={(e) => setPrice(e.target.value)}
                   onBlur={() =>
@@ -241,6 +244,7 @@ export default function BudgetPage({ params }: { params: Promise<{ trip_id: stri
                 min={0}
                 step="10"
                 placeholder="No budget set"
+                disabled={readOnly}
                 value={budgetTotal}
                 onChange={(e) => setBudgetTotal(e.target.value)}
                 onBlur={() =>
@@ -277,6 +281,7 @@ export default function BudgetPage({ params }: { params: Promise<{ trip_id: stri
         {/* Expenses */}
         <div className="flex flex-col gap-4 lg:col-span-2">
           <form
+            hidden={readOnly}
             onSubmit={addExpense}
             className="flex flex-wrap items-end gap-2 rounded-xl border border-neutral-200 bg-white p-4"
           >
@@ -366,12 +371,14 @@ export default function BudgetPage({ params }: { params: Promise<{ trip_id: stri
                         type="number"
                         min={0}
                         step="0.01"
+                        disabled={readOnly}
                         defaultValue={x.amount}
                         onBlur={(e) => updateAmount(x, e.target.value)}
                         className="h-8 w-24 text-right"
                         aria-label={`Amount for ${x.note || x.category}`}
                       />
                       <button
+                        hidden={readOnly}
                         onClick={() => removeExpense(x.id)}
                         aria-label="Delete expense"
                         className="text-neutral-300 hover:text-error-500"

@@ -37,6 +37,7 @@ export default function PackingPage({ params }: { params: Promise<{ trip_id: str
   const [error, setError] = useState<string | null>(null);
   const [label, setLabel] = useState("");
   const [category, setCategory] = useState("Other");
+  const readOnly = trip?.my_role === "viewer"; // viewers can see the list but not change it
 
   useEffect(() => {
     if (authLoading) return;
@@ -163,7 +164,7 @@ export default function PackingPage({ params }: { params: Promise<{ trip_id: str
         </p>
       )}
 
-      {visibleSuggestions.map((s) => (
+      {!readOnly && visibleSuggestions.map((s) => (
         <div
           key={s.template}
           className="mb-3 flex flex-wrap items-center gap-3 rounded-lg border border-primary-200 bg-primary-50 px-3 py-2 text-sm text-primary-900"
@@ -200,6 +201,7 @@ export default function PackingPage({ params }: { params: Promise<{ trip_id: str
                         <input
                           type="checkbox"
                           checked={item.packed}
+                          disabled={readOnly}
                           onChange={() => toggle(item)}
                           className="h-4 w-4 accent-primary-500"
                         />
@@ -208,6 +210,7 @@ export default function PackingPage({ params }: { params: Promise<{ trip_id: str
                         </span>
                       </label>
                       <button
+                        hidden={readOnly}
                         onClick={() => remove(item.id)}
                         aria-label={`Delete ${item.label}`}
                         className="text-neutral-300 hover:text-error-500"
@@ -224,6 +227,7 @@ export default function PackingPage({ params }: { params: Promise<{ trip_id: str
 
         <div className="flex flex-col gap-4">
           <form
+            hidden={readOnly}
             onSubmit={addItem}
             className="flex flex-col gap-2 rounded-xl border border-neutral-200 bg-white p-4"
           >
@@ -255,7 +259,7 @@ export default function PackingPage({ params }: { params: Promise<{ trip_id: str
                   <span className="text-neutral-700">
                     {t.name} <span className="text-xs text-neutral-400">({t.item_count})</span>
                   </span>
-                  <Button size="sm" variant="outline" onClick={() => addTemplate(t.name)}>
+                  <Button size="sm" variant="outline" disabled={readOnly} onClick={() => addTemplate(t.name)}>
                     Add
                   </Button>
                 </li>

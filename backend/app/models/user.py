@@ -1,7 +1,17 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Numeric, SmallInteger, String, Text, func
+from sqlalchemy import (
+    BigInteger,
+    DateTime,
+    Enum,
+    ForeignKey,
+    Numeric,
+    SmallInteger,
+    String,
+    Text,
+    func,
+)
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -28,6 +38,12 @@ class User(Base):
     default_stop_minutes: Mapped[int] = mapped_column(
         SmallInteger, nullable=False, server_default="60"
     )
+    # Phase 19: activity and comments newer than this count as unread in the bell.
+    last_seen_activity_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    # Phase 17: bytes of trip photos stored in R2 (for the per-user limit).
+    storage_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False, server_default="0")
     # Tokens issued before this moment are rejected (password change/reset).
     password_changed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { ArrowRight, Clock, Ruler, CalendarDays, MapPin } from "lucide-react";
 import { formatDistance, formatDuration } from "@/lib/format";
+import { RecapView } from "@/components/memories/RecapView";
 import { NavButtons } from "@/components/logistics/NavButtons";
 import type { PublicTrip, ItineraryDay, TripNavigation } from "@/types";
 
@@ -151,6 +152,16 @@ export function SharedTripView({ trip, token }: SharedTripViewProps) {
                 <DaySection key={day.id} day={day} nav={navigation?.days[day.id]} />
               ))}
             </div>
+          </div>
+        )}
+
+        {/* Recap (only when the owner opted in) */}
+        {trip.recap && (
+          <div>
+            <p className="text-xs font-semibold text-neutral-400 uppercase tracking-wide mb-3">
+              Trip recap
+            </p>
+            <RecapView recap={trip.recap} units={trip.units} />
           </div>
         )}
 

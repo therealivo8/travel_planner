@@ -2,6 +2,7 @@ import * as React from "react";
 import { MoreVertical } from "lucide-react";
 import { Badge, Button } from "@/components/ui";
 import { StatPill } from "@/components/common";
+import { RouteThumb } from "./RouteThumb";
 import { cn } from "@/lib/utils";
 import type { TripMode, TripStatus } from "@/types";
 
@@ -13,6 +14,11 @@ interface TripCardProps {
   /** Pre-formatted distance, e.g. { value: 412, unit: "km" }. */
   distance?: { value: number; unit: string };
   isExample?: boolean;
+  /** Set when the trip is shared with the viewer: their role and who owns it. */
+  role?: "owner" | "editor" | "viewer";
+  ownerName?: string;
+  /** Encoded route, drawn as an SVG thumbnail when there is no cover image. */
+  routePolyline?: string | null;
   driveTimeMin?: number;
   stopCount?: number;
   updatedAt?: Date;
@@ -50,6 +56,9 @@ export function TripCard({
   coverImage,
   distance,
   isExample,
+  role,
+  ownerName,
+  routePolyline,
   driveTimeMin,
   stopCount,
   updatedAt,
@@ -71,6 +80,8 @@ export function TripCard({
         {coverImage ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={coverImage} alt={title} className="w-full h-full object-cover" />
+        ) : routePolyline ? (
+          <RouteThumb polyline={routePolyline} />
         ) : (
           <CoverGradient />
         )}
@@ -79,6 +90,11 @@ export function TripCard({
           <Badge variant="outline" className="bg-white/90 backdrop-blur-sm text-xs">
             {modeLabel[mode]}
           </Badge>
+          {role && role !== "owner" && (
+            <Badge variant="outline" className="bg-white/90 backdrop-blur-sm text-xs capitalize">
+              {role}
+            </Badge>
+          )}
           {isExample && (
             <Badge className="bg-accent-400 text-neutral-900 text-xs">Example</Badge>
           )}
@@ -105,6 +121,18 @@ export function TripCard({
             {statusLabel[status]}
           </Badge>
         </div>
+
+        {ownerName && role && role !== "owner" && (
+          <p className="mb-2 flex items-center gap-1.5 text-xs text-neutral-500">
+            <span
+              className="flex h-5 w-5 items-center justify-center rounded-full bg-primary-100 text-[9px] font-semibold text-primary-800"
+              aria-hidden
+            >
+              {ownerName.slice(0, 2).toUpperCase()}
+            </span>
+            Shared by {ownerName}
+          </p>
+        )}
 
         {/* Stats */}
         <div className="flex items-center gap-3 flex-wrap mb-3">

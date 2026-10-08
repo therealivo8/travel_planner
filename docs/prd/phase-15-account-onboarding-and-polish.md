@@ -97,9 +97,8 @@ On registration, copy a **pre-built example trip** (for example, "Pacific Coast 
   dismissal in `localStorage` via the existing `useLocalStorage` hook. It has no server state.
 
 ### Landing page
-Replace the "Coming soon" AI card in `frontend/src/app/page.tsx` with a feature that actually
-exists, or remove it, until Phase 18 is built. A "coming soon" card makes the app look unfinished
-more than leaving it out does.
+Keep "coming soon" cards off the landing page (`frontend/src/app/page.tsx`): list only features
+that exist. A "coming soon" card makes the app look unfinished more than leaving it out does.
 
 ## Part D: Polish
 
@@ -121,7 +120,7 @@ more than leaving it out does.
 
 ## Part E: Legal and attribution
 - `/privacy` should say what's stored (email, trips, addresses), that addresses go to Google Maps
-  Platform and OpenRouteService (and Anthropic, if Phase 18 is built), and how to export or delete
+  Platform and OpenRouteService, and how to export or delete
   data (link to `/settings`).
 - `/terms` should be short and state that this is a personal project with no uptime guarantee.
 - Footer links: Privacy · Terms · "Map data © Google, routing © openrouteservice.org / OpenStreetMap

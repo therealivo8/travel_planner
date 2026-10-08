@@ -37,6 +37,43 @@ function refreshAccessToken(): Promise<string | null> {
   return _refreshPromise;
 }
 
+// ── Optimistic concurrency (Phase 19, Part D) ───────────────────────────────
+// The last version of each trip this tab has seen. Edits to a trip, its stops or its itinerary
+// send it as If-Match, so a stale tab gets a 409 instead of silently overwriting a collaborator.
+const tripVersions = new Map<string, number>();
+const TRIP_PATH = /^\/trips\/([0-9a-f-]{36})(\/[^?]*)?/;
+const VERSIONED = /^\/(waypoints|itinerary|radius|corridor|calculate-route)(\/|$)/;
+
+export function getTripVersion(tripId: string): number | undefined {
+  return tripVersions.get(tripId);
+}
+
+export function rememberTripVersion(tripId: string, version: number) {
+  tripVersions.set(tripId, version);
+}
+
+function versionHeader(path: string, method: string | undefined): Record<string, string> {
+  const m = TRIP_PATH.exec(path);
+  if (!m || !method || method === "GET" || method === "HEAD") return {};
+  const sub = m[2] ?? "";
+  const versioned = (sub === "" && method === "PATCH") || VERSIONED.test(sub);
+  const version = tripVersions.get(m[1]);
+  return versioned && version !== undefined ? { "If-Match": String(version) } : {};
+}
+
+function noteVersions(path: string, res: Response, data?: unknown) {
+  const m = TRIP_PATH.exec(path);
+  if (!m) return;
+  const header = res.headers.get("X-Trip-Version");
+  if (header) tripVersions.set(m[1], Number(header));
+  else if (!m[2] && data && typeof data === "object" && "version" in data) {
+    tripVersions.set(m[1], Number((data as { version: number }).version));
+  }
+}
+
+/** Fired when a save is refused because someone else changed the trip first. */
+export const TRIP_CONFLICT_EVENT = "trip-conflict";
+
 async function doFetch(path: string, options: RequestOptions): Promise<Response> {
   const { body, headers, ...rest } = options;
 
@@ -49,6 +86,7 @@ async function doFetch(path: string, options: RequestOptions): Promise<Response>
     headers: {
       "Content-Type": "application/json",
       ...authHeader,
+      ...versionHeader(path, rest.method),
       ...headers,
     },
     body: body !== undefined ? JSON.stringify(body) : undefined,
@@ -71,6 +109,15 @@ async function request<T>(path: string, options: RequestOptions = {}, isRetry = 
       window.location.href = "/login";
     }
     throw new SessionExpiredError();
+  }
+
+  if (res.status === 409) {
+    const body = (await res.clone().json().catch(() => null)) as { code?: string; version?: number; detail?: string } | null;
+    if (body?.code === "version_conflict") {
+      const tripId = TRIP_PATH.exec(path)?.[1];
+      if (tripId) window.dispatchEvent(new CustomEvent(TRIP_CONFLICT_EVENT, { detail: { tripId } }));
+      throw new Error(`API 409: ${JSON.stringify(body)}`);
+    }
   }
 
   // Phase 14 cost guardrails: the backend sends a machine-readable code and reset time.
@@ -105,9 +152,14 @@ async function request<T>(path: string, options: RequestOptions = {}, isRetry = 
   }
 
   // 204 No Content
-  if (res.status === 204) return undefined as T;
+  if (res.status === 204) {
+    noteVersions(path, res);
+    return undefined as T;
+  }
 
-  return res.json() as Promise<T>;
+  const data = (await res.json()) as T;
+  noteVersions(path, res, data);
+  return data;
 }
 
 /** The human-readable part of a thrown API error: pulls `detail` out of "API 400: {...}". */

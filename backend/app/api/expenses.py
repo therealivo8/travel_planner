@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.deps import CurrentUser
-from app.core.trips import get_owned_trip
+from app.core.trip_access import TripRole, get_trip_for
 from app.db.session import get_db
 from app.models.logistics import EXPENSE_CATEGORIES, TripExpense
 from app.models.trip import ItineraryDay, Trip
@@ -43,7 +43,7 @@ async def _get_expense(db: AsyncSession, trip_id: uuid.UUID, expense_id: uuid.UU
 
 @router.get("/expenses", response_model=list[ExpenseOut])
 async def list_expenses(trip_id: uuid.UUID, current_user: CurrentUser, db: DB) -> list[ExpenseOut]:
-    await get_owned_trip(db, trip_id, current_user.id)
+    await get_trip_for(trip_id, current_user, db, TripRole.VIEWER)
     rows = (
         await db.execute(
             select(TripExpense)
@@ -58,7 +58,7 @@ async def list_expenses(trip_id: uuid.UUID, current_user: CurrentUser, db: DB) -
 async def create_expense(
     trip_id: uuid.UUID, body: ExpenseCreate, current_user: CurrentUser, db: DB
 ) -> ExpenseOut:
-    trip = await get_owned_trip(db, trip_id, current_user.id)
+    trip = await get_trip_for(trip_id, current_user, db, TripRole.EDITOR)
     await _check_day(db, trip, body.itinerary_day_id)
     expense = TripExpense(trip_id=trip_id, **body.model_dump(exclude_none=True))
     db.add(expense)
@@ -75,7 +75,7 @@ async def update_expense(
     current_user: CurrentUser,
     db: DB,
 ) -> ExpenseOut:
-    trip = await get_owned_trip(db, trip_id, current_user.id)
+    trip = await get_trip_for(trip_id, current_user, db, TripRole.EDITOR)
     expense = await _get_expense(db, trip_id, expense_id)
     changes = body.model_dump(exclude_unset=True)
     for required in ("category", "amount", "spent_on"):
@@ -93,18 +93,19 @@ async def update_expense(
 async def delete_expense(
     trip_id: uuid.UUID, expense_id: uuid.UUID, current_user: CurrentUser, db: DB
 ) -> None:
-    await get_owned_trip(db, trip_id, current_user.id)
+    await get_trip_for(trip_id, current_user, db, TripRole.EDITOR)
     await db.delete(await _get_expense(db, trip_id, expense_id))
     await db.commit()
 
 
 @router.get("/budget", response_model=BudgetOut)
 async def get_budget(trip_id: uuid.UUID, current_user: CurrentUser, db: DB) -> BudgetOut:
-    trip = await get_owned_trip(
-        db,
+    trip = await get_trip_for(
         trip_id,
-        current_user.id,
-        selectinload(Trip.itinerary_days).selectinload(ItineraryDay.waypoints),
+        current_user,
+        db,
+        TripRole.VIEWER,
+        load=(selectinload(Trip.itinerary_days).selectinload(ItineraryDay.waypoints),),
     )
     mpg, price = float(trip.vehicle_mpg), float(trip.fuel_price_per_unit)
 

@@ -7,6 +7,8 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import BaseModel, Field, computed_field, field_validator, model_validator
 
+from app.schemas.memories import RecapOut
+
 # Shared bound for list-of-ID request fields (suggestion_ids, ordered_ids,
 # waypoint_ids, etc.). These endpoints are already hourly rate-limited and
 # every ID must already exist in the caller's own trip (verified by a
@@ -63,6 +65,8 @@ class WaypointOut(BaseModel):
     place_id: str | None = None
     itinerary_day_id: uuid.UUID | None = None
     scheduled_arrival_time: time | None = None
+    visited_at: datetime | None = None
+    skipped: bool = False
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -116,6 +120,7 @@ class TripUpdate(BaseModel):
     budget_total: float | None = Field(default=None, ge=0, le=99_999_999)
     currency: str | None = Field(default=None, min_length=3, max_length=3)
     timezone: str | None = Field(default=None, max_length=64)
+    share_recap: bool | None = None
 
     @field_validator("timezone")
     @classmethod
@@ -124,7 +129,7 @@ class TripUpdate(BaseModel):
 
     @model_validator(mode="after")
     def _no_null_required_fields(self) -> "TripUpdate":
-        for name in ("vehicle_mpg", "fuel_price_per_unit", "currency", "timezone"):
+        for name in ("vehicle_mpg", "fuel_price_per_unit", "currency", "timezone", "share_recap"):
             if name in self.model_fields_set and getattr(self, name) is None:
                 raise ValueError(f"{name} cannot be null")
         return self
@@ -157,6 +162,16 @@ class TripOut(BaseModel):
     currency: str = "USD"
     timezone: str = "UTC"
     is_example: bool = False
+    share_recap: bool = False
+    # Computed in GET /trips/{id} from the itinerary dates in the trip's timezone.
+    in_progress: bool = False
+    ended: bool = False
+    # Phase 19: the caller's role, the owner's display name, how many collaborators there are
+    # (the UI only polls for changes when this is above zero), and the concurrency version.
+    my_role: Literal["owner", "editor", "viewer"] = "owner"
+    owner_name: str | None = None
+    member_count: int = 0
+    version: int = 1
     created_at: datetime
     updated_at: datetime
     waypoints: list[WaypointOut] = []
@@ -197,6 +212,11 @@ class TripListOut(BaseModel):
     start_date: date_type | None = None
     is_public: bool = False
     is_example: bool = False
+    # Phase 19: how the viewer relates to this trip, for the "Shared with me" list.
+    role: Literal["owner", "editor", "viewer"] = "owner"
+    owner_name: str | None = None
+    # Down-sampled copy of the route for drawing the card thumbnail without extra requests.
+    route_thumb: str | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -274,6 +294,11 @@ class ItineraryWaypointOut(BaseModel):
     day_position: int | None
     scheduled_arrival_time: time | None
     drive_seconds_from_prev: int | None
+    # Phase 17: Today view
+    stop_duration_minutes: int | None = None
+    notes: str | None = None
+    visited_at: datetime | None = None
+    skipped: bool = False
 
     model_config = {"from_attributes": True}
 
@@ -406,5 +431,7 @@ class PublicTripOut(BaseModel):
     units: Literal["imperial", "metric"] = "imperial"
     waypoints: list[WaypointOut] = []
     days: list[ItineraryDayOut] = []
+    # Present only when the owner turned on "Add recap to share page".
+    recap: RecapOut | None = None
 
     model_config = {"from_attributes": True}

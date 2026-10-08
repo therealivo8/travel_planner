@@ -1,4 +1,5 @@
 import uuid
+from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -6,23 +7,15 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import CurrentUser
+from app.core.trip_access import TripRole, display_name, get_trip_for, touch_trip
 from app.db.session import get_db
-from app.models.trip import Trip, Waypoint
+from app.models.trip import Waypoint
+from app.schemas.memories import CheckInRequest
 from app.schemas.trip import ReorderWaypointsRequest, WaypointCreate, WaypointOut, WaypointUpdate
 
 router = APIRouter(prefix="/trips/{trip_id}/waypoints", tags=["waypoints"])
 
 DB = Annotated[AsyncSession, Depends(get_db)]
-
-
-async def _get_owned_trip_bare(trip_id: uuid.UUID, user_id: uuid.UUID, db: AsyncSession) -> Trip:
-    result = await db.execute(
-        select(Trip).where(Trip.id == trip_id, Trip.user_id == user_id)
-    )
-    trip = result.scalar_one_or_none()
-    if trip is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Trip not found")
-    return trip
 
 
 async def _get_owned_waypoint(
@@ -43,7 +36,7 @@ async def list_waypoints(
     current_user: CurrentUser,
     db: DB,
 ) -> list[WaypointOut]:
-    await _get_owned_trip_bare(trip_id, current_user.id, db)
+    await get_trip_for(trip_id, current_user, db, TripRole.VIEWER)
     result = await db.execute(
         select(Waypoint).where(Waypoint.trip_id == trip_id).order_by(Waypoint.position)
     )
@@ -57,7 +50,7 @@ async def add_waypoint(
     current_user: CurrentUser,
     db: DB,
 ) -> WaypointOut:
-    await _get_owned_trip_bare(trip_id, current_user.id, db)
+    trip = await get_trip_for(trip_id, current_user, db, TripRole.EDITOR)
     count_result = await db.execute(
         select(Waypoint).where(Waypoint.trip_id == trip_id)
     )
@@ -67,6 +60,34 @@ async def add_waypoint(
         data["stop_duration_minutes"] = current_user.default_stop_minutes
     waypoint = Waypoint(trip_id=trip_id, position=position, **data)
     db.add(waypoint)
+    await touch_trip(db, trip, current_user, ("waypoint_added", f"{display_name(current_user)} added {body.label or body.address} to the trip"))
+    await db.commit()
+    await db.refresh(waypoint)
+    return WaypointOut.model_validate(waypoint)
+
+
+@router.post("/{waypoint_id}/check-in", response_model=WaypointOut)
+async def check_in(
+    trip_id: uuid.UUID,
+    waypoint_id: uuid.UUID,
+    body: CheckInRequest,
+    current_user: CurrentUser,
+    db: DB,
+) -> WaypointOut:
+    """Mark a stop arrived/skipped (or undo). Idempotent, so an offline queue can safely
+    replay it: the same action twice leaves the same state."""
+    trip = await get_trip_for(trip_id, current_user, db, TripRole.EDITOR)
+    waypoint = await _get_owned_waypoint(waypoint_id, trip_id, db)
+    now = datetime.now(UTC)
+    # Trust the client's timestamp (it may be a replayed offline check-in) but never the future.
+    at = min(body.at, now) if body.at else now
+    if body.action == "arrived":
+        waypoint.visited_at, waypoint.skipped = at, False
+    elif body.action == "skipped":
+        waypoint.visited_at, waypoint.skipped = None, True
+    else:
+        waypoint.visited_at, waypoint.skipped = None, False
+    await touch_trip(db, trip, current_user, ("check_in", f"{display_name(current_user)} marked {waypoint.label or waypoint.address} as {body.action}"))
     await db.commit()
     await db.refresh(waypoint)
     return WaypointOut.model_validate(waypoint)
@@ -80,10 +101,11 @@ async def update_waypoint(
     current_user: CurrentUser,
     db: DB,
 ) -> WaypointOut:
-    await _get_owned_trip_bare(trip_id, current_user.id, db)
+    trip = await get_trip_for(trip_id, current_user, db, TripRole.EDITOR)
     waypoint = await _get_owned_waypoint(waypoint_id, trip_id, db)
     for field, value in body.model_dump(exclude_unset=True).items():
         setattr(waypoint, field, value)
+    await touch_trip(db, trip, current_user, ("waypoint_updated", f"{display_name(current_user)} edited {waypoint.label or waypoint.address}"))
     await db.commit()
     await db.refresh(waypoint)
     return WaypointOut.model_validate(waypoint)
@@ -96,7 +118,7 @@ async def delete_waypoint(
     current_user: CurrentUser,
     db: DB,
 ) -> None:
-    await _get_owned_trip_bare(trip_id, current_user.id, db)
+    trip = await get_trip_for(trip_id, current_user, db, TripRole.EDITOR)
     waypoint = await _get_owned_waypoint(waypoint_id, trip_id, db)
     deleted_position = waypoint.position
     await db.delete(waypoint)
@@ -110,6 +132,8 @@ async def delete_waypoint(
     for wp in remaining_result.scalars().all():
         wp.position -= 1
 
+    await touch_trip(db, trip, current_user, ("waypoint_removed", f"{display_name(current_user)} removed {waypoint.label or waypoint.address} from the trip"))
+
     await db.commit()
 
 
@@ -120,7 +144,7 @@ async def reorder_waypoints(
     current_user: CurrentUser,
     db: DB,
 ) -> list[WaypointOut]:
-    await _get_owned_trip_bare(trip_id, current_user.id, db)
+    trip = await get_trip_for(trip_id, current_user, db, TripRole.EDITOR)
     existing_result = await db.execute(
         select(Waypoint).where(Waypoint.trip_id == trip_id)
     )
@@ -134,6 +158,8 @@ async def reorder_waypoints(
 
     for new_pos, wp_id in enumerate(body.ordered_ids):
         waypoints[wp_id].position = new_pos
+
+    await touch_trip(db, trip, current_user, ("waypoints_reordered", f"{display_name(current_user)} reordered the stops"))
 
     await db.commit()
     result = await db.execute(

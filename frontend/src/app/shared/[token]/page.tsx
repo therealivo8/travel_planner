@@ -47,7 +47,8 @@ export async function generateMetadata({
       title: trip.title,
       description,
       type: "website",
-      images: trip.cover_image_url ? [{ url: trip.cover_image_url }] : [],
+      // With no cover image, Next adds the generated route card from opengraph-image.tsx.
+      ...(trip.cover_image_url ? { images: [{ url: trip.cover_image_url }] } : {}),
     },
     twitter: {
       card: "summary_large_image",

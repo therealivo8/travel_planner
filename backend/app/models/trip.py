@@ -73,6 +73,11 @@ class Trip(Base):
     start_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     cover_image_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Phase 15: the demo trip copied into every new account (no upstream calls to create).
+    # Phase 19: bumped on every change to the trip, its stops or its itinerary (see
+    # app.core.trip_access.touch_trip); clients send it as If-Match to avoid lost updates.
+    version: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
+    # Phase 17: show the recap on the public share page.
+    share_recap: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
     is_example: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
     # Phase 16: cost estimate inputs, plus the IANA timezone used for calendar export.
     vehicle_mpg: Mapped[float] = mapped_column(Numeric(4, 1), nullable=False, server_default="28.0")
@@ -143,6 +148,9 @@ class Waypoint(Base):
     # Phase 9: order within itinerary_day (independent of the trip-wide `position`,
     # which also drives route calculation and must not be repurposed for this).
     day_position: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
+    # Phase 17: check-in state from the Today view.
+    visited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    skipped: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

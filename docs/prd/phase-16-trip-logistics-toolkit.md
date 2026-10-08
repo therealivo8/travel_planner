@@ -84,7 +84,7 @@ expense form, a list of expenses grouped by day, and a progress bar of spending 
   *Cold weather*, *Kids*, *Pets*. "Add template" inserts its items, skipping duplicates.
 - **Suggestions from data the app already has**: if Part B forecasts rain or lows below 5°C, show a
   dismissible "Add rain or cold-weather gear?" prompt. If any stop's category is `park` or `campground`,
-  suggest the *Camping* template. Phase 18 can later replace these rules with AI suggestions.
+  suggest the *Camping* template.
 - UI: a **Packing** tab with checkboxes grouped by category and a "3 / 24 packed" progress count.
 - Include it in the PDF export as an optional section.
 

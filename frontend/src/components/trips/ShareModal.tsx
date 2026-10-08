@@ -10,11 +10,19 @@ import type { ShareInfo } from "@/types";
 interface ShareModalProps {
   tripId: string;
   initialIsPublic: boolean;
+  initialShareRecap?: boolean;
   initialShareToken: string | null;
   onClose: () => void;
 }
 
-export function ShareModal({ tripId, initialIsPublic, initialShareToken, onClose }: ShareModalProps) {
+export function ShareModal({
+  tripId,
+  initialIsPublic,
+  initialShareRecap = false,
+  initialShareToken,
+  onClose,
+}: ShareModalProps) {
+  const [shareRecap, setShareRecap] = useState(initialShareRecap);
   const [isPublic, setIsPublic] = useState(initialIsPublic);
   const [shareInfo, setShareInfo] = useState<ShareInfo | null>(
     initialIsPublic && initialShareToken
@@ -33,6 +41,17 @@ export function ShareModal({ tripId, initialIsPublic, initialShareToken, onClose
         .catch(() => {});
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function handleRecapToggle() {
+    const next = !shareRecap;
+    setShareRecap(next);
+    try {
+      await api.patch(`/trips/${tripId}`, { share_recap: next });
+    } catch (err) {
+      setShareRecap(!next);
+      toast.error(err instanceof Error ? err.message : "Failed to update sharing");
+    }
+  }
 
   async function handleToggle() {
     setLoading(true);
@@ -113,6 +132,32 @@ export function ShareModal({ tripId, initialIsPublic, initialShareToken, onClose
             >
               {copied ? <Check className="h-3.5 w-3.5 text-green-600" /> : <Copy className="h-3.5 w-3.5" />}
             </Button>
+          </div>
+        )}
+
+        {isPublic && (
+          <div className="mt-4 flex items-center justify-between border-t border-neutral-100 pt-4">
+            <div>
+              <p className="text-sm font-medium text-neutral-800">Add recap to share page</p>
+              <p className="mt-0.5 text-xs text-neutral-500">
+                Shows visited stops, your notes and photos. Spending stays private.
+              </p>
+            </div>
+            <button
+              onClick={handleRecapToggle}
+              className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors focus:outline-none ${
+                shareRecap ? "bg-primary-600" : "bg-neutral-200"
+              }`}
+              role="switch"
+              aria-checked={shareRecap}
+              aria-label="Add recap to share page"
+            >
+              <span
+                className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+                  shareRecap ? "translate-x-6" : "translate-x-1"
+                }`}
+              />
+            </button>
           </div>
         )}
 

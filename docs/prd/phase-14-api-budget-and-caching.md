@@ -50,7 +50,7 @@ New table `api_usage_daily`:
 | column | type | notes |
 |---|---|---|
 | `day` | `date` | UTC day. Part of the primary key. |
-| `sku` | `varchar(50)` | e.g. `google.nearby_search`, `google.distance_matrix_element`, `google.directions`, `google.geocode`, `ors.isochrone`, `anthropic.tokens_in`, `anthropic.tokens_out`. Part of the primary key. |
+| `sku` | `varchar(50)` | e.g. `google.nearby_search`, `google.distance_matrix_element`, `google.directions`, `google.geocode`, `ors.isochrone`. Part of the primary key. |
 | `units` | `integer` | Incremented atomically: `INSERT ... ON CONFLICT (day, sku) DO UPDATE SET units = api_usage_daily.units + EXCLUDED.units`. |
 
 New table `user_action_daily` (`day`, `user_id`, `action`, `count`). Same upsert pattern.
@@ -104,7 +104,6 @@ Keep `slowapi` for burst protection. Add daily quotas per user, stored in `user_
 | `corridor_discover` | 4 |
 | `optimize_day` / `build_itinerary` | 20 |
 | `calculate_route` | 40 |
-| `ai_*` (Phase 18) | 15 |
 
 Return a 429 with `code: "user_quota"` and the reset time. Show the remaining count next to the
 Discover buttons ("3 discoveries left today"). This also tells users that discovery is a limited

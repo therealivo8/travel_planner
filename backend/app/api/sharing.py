@@ -7,8 +7,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.api.recap import build_recap
 from app.core.deps import CurrentUser
 from app.core.limiter import limiter
+from app.core.trip_access import TripRole, get_trip_for
 from app.db.session import get_db
 from app.models.trip import ItineraryDay, Trip
 from app.models.user import User
@@ -30,18 +32,6 @@ def _build_share_url(request: Request, token: str) -> str:
     return f"{base}/shared/{token}"
 
 
-async def _get_owned_trip(trip_id: uuid.UUID, user_id: uuid.UUID, db: AsyncSession) -> Trip:
-    result = await db.execute(
-        select(Trip)
-        .where(Trip.id == trip_id, Trip.user_id == user_id)
-        .options(selectinload(Trip.waypoints))
-    )
-    trip = result.scalar_one_or_none()
-    if trip is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Trip not found")
-    return trip
-
-
 @router.post("/trips/{trip_id}/share", response_model=ShareOut)
 async def enable_sharing(
     trip_id: uuid.UUID,
@@ -49,7 +39,9 @@ async def enable_sharing(
     current_user: CurrentUser,
     db: DB,
 ) -> ShareOut:
-    trip = await _get_owned_trip(trip_id, current_user.id, db)
+    trip = await get_trip_for(
+        trip_id, current_user, db, TripRole.OWNER, load=(selectinload(Trip.waypoints),)
+    )
 
     if not trip.share_token:
         trip.share_token = secrets.token_urlsafe(32)
@@ -70,7 +62,9 @@ async def disable_sharing(
     current_user: CurrentUser,
     db: DB,
 ) -> None:
-    trip = await _get_owned_trip(trip_id, current_user.id, db)
+    trip = await get_trip_for(
+        trip_id, current_user, db, TripRole.OWNER, load=(selectinload(Trip.waypoints),)
+    )
     trip.is_public = False
     trip.share_token = None
     await db.commit()
@@ -147,6 +141,7 @@ async def get_shared_trip(
         start_date=trip.start_date,
         cover_image_url=trip.cover_image_url,
         units=owner_units,
+        recap=await build_recap(db, trip, public=True) if trip.share_recap else None,
         waypoints=[WaypointOut.model_validate(w) for w in sorted_wps],
         days=days_out,
     )

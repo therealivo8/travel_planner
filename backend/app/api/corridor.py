@@ -12,8 +12,11 @@ from starlette.concurrency import run_in_threadpool
 from app.core import budget, cache
 from app.core.deps import CurrentUser
 from app.core.limiter import limiter
+from app.core.trip_access import TripRole, display_name, get_trip_for, touch_trip
+from app.core.votes import carry_over_votes
 from app.db.session import get_db
 from app.models.trip import CorridorSuggestion, Trip, Waypoint
+from app.models.user import User
 from app.schemas.trip import (
     CorridorDiscoverResponse,
     CorridorSelectRequest,
@@ -31,15 +34,16 @@ router = APIRouter(tags=["corridor"])
 DB = Annotated[AsyncSession, Depends(get_db)]
 
 
-async def _get_p2p_trip_with_route(trip_id: uuid.UUID, user_id: uuid.UUID, db: AsyncSession) -> Trip:
-    result = await db.execute(
-        select(Trip)
-        .where(Trip.id == trip_id, Trip.user_id == user_id)
-        .options(selectinload(Trip.waypoints), selectinload(Trip.corridor_suggestions))
+async def _get_p2p_trip_with_route(
+    trip_id: uuid.UUID, user: User, db: AsyncSession, min_role: TripRole = TripRole.OWNER
+) -> Trip:
+    trip = await get_trip_for(
+        trip_id,
+        user,
+        db,
+        min_role,
+        load=(selectinload(Trip.waypoints), selectinload(Trip.corridor_suggestions)),
     )
-    trip = result.scalar_one_or_none()
-    if trip is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Trip not found")
     if trip.mode != "point_to_point":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -64,7 +68,7 @@ async def discover_corridor(
     max_detour_minutes: int = Query(15, ge=1, le=60),
     refresh: bool = Query(False, description="Bypass the cache (counts against the quota)"),
 ) -> CorridorDiscoverResponse:
-    trip = await _get_p2p_trip_with_route(trip_id, current_user.id, db)
+    trip = await _get_p2p_trip_with_route(trip_id, current_user, db, TripRole.EDITOR)
     assert trip.end_lat is not None and trip.end_lng is not None
     assert trip.route_polyline is not None and trip.total_drive_seconds is not None
 
@@ -124,6 +128,7 @@ async def discover_corridor(
         ) from exc
 
     assert suggestions is not None
+    old_suggestions = [(sg.id, sg.place_id) for sg in trip.corridor_suggestions]
     await db.execute(delete(CorridorSuggestion).where(CorridorSuggestion.trip_id == trip_id))
 
     new_suggestions: list[CorridorSuggestion] = []
@@ -145,6 +150,12 @@ async def discover_corridor(
         db.add(suggestion)
         new_suggestions.append(suggestion)
 
+    await db.flush()
+    await carry_over_votes(
+        db, trip_id, "corridor", old_suggestions, [(sg.id, sg.place_id) for sg in new_suggestions]
+    )
+    await touch_trip(db, trip, current_user, ("discovery", f"{display_name(current_user)} ran discovery along the route"))
+
     await db.commit()
     for sg in new_suggestions:
         await db.refresh(sg)
@@ -163,7 +174,7 @@ async def get_corridor_suggestions(
     current_user: CurrentUser,
     db: DB,
 ) -> CorridorDiscoverResponse:
-    await _get_p2p_trip_with_route(trip_id, current_user.id, db)
+    await _get_p2p_trip_with_route(trip_id, current_user, db, TripRole.VIEWER)
 
     result = await db.execute(
         select(CorridorSuggestion).where(CorridorSuggestion.trip_id == trip_id)
@@ -202,7 +213,7 @@ async def select_corridor_suggestions(
     current_user: CurrentUser,
     db: DB,
 ) -> TripOut:
-    trip = await _get_p2p_trip_with_route(trip_id, current_user.id, db)
+    trip = await _get_p2p_trip_with_route(trip_id, current_user, db, TripRole.EDITOR)
     assert trip.end_lat is not None and trip.end_lng is not None
 
     result = await db.execute(
@@ -289,6 +300,8 @@ async def select_corridor_suggestions(
                 wp.drive_seconds_from_prev = legs[i]["drive_seconds"]
                 wp.distance_meters_from_prev = legs[i]["distance_meters"]
 
+    await touch_trip(db, trip, current_user, ("stops_selected", f"{display_name(current_user)} updated the selected stops"))
+
     await db.commit()
     db.expire_all()
 
@@ -308,7 +321,7 @@ async def deselect_corridor_suggestion(
     current_user: CurrentUser,
     db: DB,
 ) -> CorridorSuggestionOut:
-    await _get_p2p_trip_with_route(trip_id, current_user.id, db)
+    trip = await _get_p2p_trip_with_route(trip_id, current_user, db, TripRole.EDITOR)
 
     result = await db.execute(
         select(CorridorSuggestion).where(
@@ -340,6 +353,8 @@ async def deselect_corridor_suggestion(
         )
         for remaining_wp in remaining.scalars().all():
             remaining_wp.position -= 1
+
+    await touch_trip(db, trip, current_user, ("stops_selected", f"{display_name(current_user)} removed a selected stop"))
 
     await db.commit()
     await db.refresh(suggestion)

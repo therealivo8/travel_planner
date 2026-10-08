@@ -16,8 +16,8 @@ Pipeline:
    Cap at limit.
 
 This function takes plain geometry/numeric inputs and returns plain dicts — no FastAPI/DB
-coupling — so a future LLM-based suggestion feature can call it directly to get a
-geometrically-valid candidate pool before re-ranking by natural-language preference.
+coupling — so other callers (a future ranking or suggestion feature, a script) can reuse it
+directly to get a geometrically-valid candidate pool.
 """
 
 import math

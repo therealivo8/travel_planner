@@ -8,6 +8,8 @@ import {
   useMap,
   useMapsLibrary,
 } from "@vis.gl/react-google-maps";
+import { MapPinOff } from "lucide-react";
+import { useOnline } from "@/hooks/useOnline";
 import type { Waypoint } from "@/types";
 
 interface Props {
@@ -61,7 +63,20 @@ export function TripMap({
   routePolyline,
   layers,
 }: Props) {
+  const online = useOnline();
   const defaultCenter = { lat: startLat, lng: startLng };
+
+  // Google forbids caching map tiles, so offline the map simply can't draw; the stop list
+  // beside it keeps working.
+  if (!online) {
+    return (
+      <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-neutral-100 p-6 text-center text-sm text-neutral-500">
+        <MapPinOff className="h-6 w-6" aria-hidden />
+        <p className="font-medium text-neutral-700">Map unavailable offline</p>
+        <p className="text-xs">Your stops and notes are still available.</p>
+      </div>
+    );
+  }
 
   return (
     <Map

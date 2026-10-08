@@ -6,12 +6,14 @@ import { MoreVertical, Copy, Share2, Calendar, Archive, Trash2 } from "lucide-re
 
 interface TripActionsMenuProps {
   tripId: string;
+  /** Owners get every action; others on a shared trip may only open it and make a copy. */
+  role?: "owner" | "editor" | "viewer";
   onDuplicate: () => void;
   onDelete: () => void;
   onArchive: () => void;
 }
 
-export function TripActionsMenu({ tripId, onDuplicate, onDelete, onArchive }: TripActionsMenuProps) {
+export function TripActionsMenu({ tripId, role = "owner", onDuplicate, onDelete, onArchive }: TripActionsMenuProps) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -69,6 +71,7 @@ export function TripActionsMenu({ tripId, onDuplicate, onDelete, onArchive }: Tr
             <Copy className="h-3.5 w-3.5" />
             Duplicate
           </button>
+          {role === "owner" && (
           <button
             onClick={(e) => { e.stopPropagation(); handle(() => router.push(`/trips/${tripId}#share`)); }}
             className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-neutral-50 text-neutral-700"
@@ -76,6 +79,8 @@ export function TripActionsMenu({ tripId, onDuplicate, onDelete, onArchive }: Tr
             <Share2 className="h-3.5 w-3.5" />
             Share
           </button>
+          )}
+          {role !== "viewer" && (
           <button
             onClick={(e) => { e.stopPropagation(); handle(onArchive); }}
             className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-neutral-50 text-neutral-700"
@@ -83,6 +88,9 @@ export function TripActionsMenu({ tripId, onDuplicate, onDelete, onArchive }: Tr
             <Archive className="h-3.5 w-3.5" />
             Archive
           </button>
+          )}
+          {role === "owner" && (
+            <>
           <div className="h-px bg-neutral-100 my-1" />
           <button
             onClick={(e) => { e.stopPropagation(); handle(onDelete); }}
@@ -91,6 +99,8 @@ export function TripActionsMenu({ tripId, onDuplicate, onDelete, onArchive }: Tr
             <Trash2 className="h-3.5 w-3.5" />
             Delete
           </button>
+            </>
+          )}
         </div>
       )}
     </div>

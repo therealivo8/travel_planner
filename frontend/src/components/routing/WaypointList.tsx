@@ -33,6 +33,10 @@ interface Props {
   onUpdateLabel: (waypointId: string, label: string) => Promise<void>;
   onUpdateStopDuration: (waypointId: string, minutes: number | null) => Promise<void>;
   loading?: boolean;
+  /** Viewers: a plain list with no editing, reordering, or adding. */
+  readOnly?: boolean;
+  /** Extra content under each stop, e.g. group votes and the comment badge. */
+  renderExtra?: (waypoint: Waypoint) => React.ReactNode;
 }
 
 interface SortableItemProps {
@@ -139,6 +143,8 @@ export function WaypointList({
   onUpdateLabel,
   onUpdateStopDuration,
   loading,
+  readOnly = false,
+  renderExtra,
 }: Props) {
   const [adding, setAdding] = useState(false);
   const [pendingAdd, setPendingAdd] = useState<AddressSelection | null>(null);
@@ -172,19 +178,40 @@ export function WaypointList({
     setAdding(false);
   }
 
+  if (readOnly) {
+    return (
+      <ol className="flex flex-col gap-2">
+        {waypoints.map((wp, i) => (
+          <li key={wp.id} className="rounded-lg border border-neutral-200 bg-white p-3">
+            <p className="text-sm font-medium text-neutral-900">
+              {i + 1}. {wp.label || wp.address}
+            </p>
+            {wp.label && wp.address !== wp.label && (
+              <p className="truncate text-xs text-neutral-500">{wp.address}</p>
+            )}
+            {renderExtra?.(wp)}
+          </li>
+        ))}
+        {waypoints.length === 0 && <li className="text-sm text-neutral-400">No stops yet.</li>}
+      </ol>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-2">
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <SortableContext items={waypoints.map((w) => w.id)} strategy={verticalListSortingStrategy}>
           {waypoints.map((wp, i) => (
-            <SortableWaypointItem
-              key={wp.id}
-              waypoint={wp}
-              index={i}
-              onDelete={onDelete}
-              onUpdateLabel={onUpdateLabel}
-              onUpdateStopDuration={onUpdateStopDuration}
-            />
+            <div key={wp.id}>
+              <SortableWaypointItem
+                waypoint={wp}
+                index={i}
+                onDelete={onDelete}
+                onUpdateLabel={onUpdateLabel}
+                onUpdateStopDuration={onUpdateStopDuration}
+              />
+              {renderExtra?.(wp)}
+            </div>
           ))}
         </SortableContext>
       </DndContext>

@@ -197,6 +197,8 @@ Make sure your repo is on GitHub. Both platforms deploy directly from it.
 | `RESEND_API_KEY` | Optional — [Resend](https://resend.com) API key for password-reset emails (free tier: 3,000/month). Leave unset locally and the reset link is logged to the console instead. |
 | `EMAIL_FROM` | Optional — sender for those emails, e.g. `Road Trip Planner <noreply@yourdomain.com>`. Resend only sends from a domain you've verified. |
 | `FRONTEND_URL` | The frontend's public origin, used to build the link in reset emails (e.g. `https://your-app.vercel.app`). Defaults to `http://localhost:3000`. |
+| `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET` | Optional — Cloudflare R2 credentials for trip photos. Without them the photo features answer 503 and the rest of the app works. See the deployment runbook for bucket CORS. |
+| `R2_PUBLIC_BASE_URL` | Optional — public custom domain of the bucket, used only for photos on trips with a shared recap. |
 | `ADMIN_EMAILS` | Optional — comma-separated emails allowed to open `/admin/usage`. |
 
 > **Paste values unquoted.** Railway's dashboard stores the field verbatim, unlike a

@@ -22,6 +22,8 @@ import { PageShell } from "@/components/layout/PageShell";
 import { BudgetPausedBanner, DiscoveryMeta, StagedProgress } from "@/components/common";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { useDiscoveryQuota } from "@/hooks/useDiscoveryQuota";
+import { useVotes } from "@/hooks/useVotes";
+import { VoteButtons } from "@/components/collab/VoteButtons";
 import type { Trip, RadiusSuggestion, GeoJSONPolygon, SuggestionCategory } from "@/types";
 
 const CATEGORIES: { value: SuggestionCategory | "all"; label: string }[] = [
@@ -72,6 +74,12 @@ export default function DiscoverPage({
     cached: false,
     updatedAt: null,
   });
+  // Collaboration: viewers can look and vote but not run discovery or build the plan.
+  const role = trip?.my_role ?? "owner";
+  const canEdit = role !== "viewer";
+  const shared = (trip?.member_count ?? 0) > 0 || role !== "owner";
+  const [sortFavourites, setSortFavourites] = useState(false);
+  const { tallies, vote, net } = useVotes(trip_id, "radius", shared, suggestions.map((s) => s.id).join());
   const quota = useDiscoveryQuota("radius_discover");
   const { noteError, reload: reloadQuota } = quota;
   const hasRunDiscovery = useRef(false);
@@ -202,10 +210,14 @@ export default function DiscoverPage({
     }
   }
 
-  const visibleSuggestions =
+  const byCategory =
     activeCategory === "all"
       ? suggestions
       : suggestions.filter((s) => s.category === activeCategory);
+  // "Group favourites": net votes first, then the usual quality ranking.
+  const visibleSuggestions = sortFavourites
+    ? [...byCategory].sort((a, b) => net(b.id) - net(a.id) || b.quality_score - a.quality_score)
+    : byCategory;
 
   if (initialLoading || !trip) {
     return (
@@ -249,11 +261,28 @@ export default function DiscoverPage({
         ))}
       </div>
 
+      {shared && (
+        <button
+          type="button"
+          aria-pressed={sortFavourites}
+          onClick={() => setSortFavourites((v) => !v)}
+          className={cn(
+            "self-start rounded-full border px-3 py-1 text-xs font-medium",
+            sortFavourites
+              ? "border-primary-500 bg-primary-500 text-white"
+              : "border-neutral-200 bg-white text-neutral-600 hover:border-neutral-400"
+          )}
+        >
+          Group favourites
+        </button>
+      )}
+
       {/* Re-run discovery */}
       <Button
         variant="outline"
         size="sm"
         className="gap-1.5 self-start"
+        hidden={!canEdit}
         onClick={() => runDiscovery(undefined, true)}
         disabled={discovering || quota.paused || quota.remaining === 0}
       >
@@ -286,18 +315,26 @@ export default function DiscoverPage({
           <p className="text-sm text-neutral-400 text-center py-8">No places found.</p>
         ) : (
           visibleSuggestions.map((s) => (
-            <SuggestionCard
-              key={s.id}
-              suggestion={s}
-              metaSeconds={s.drive_seconds_from_start}
-              onToggle={toggleSuggestion}
-            />
+            <div key={s.id} className="flex flex-col gap-1">
+              <SuggestionCard
+                suggestion={s}
+                metaSeconds={s.drive_seconds_from_start}
+                onToggle={canEdit ? toggleSuggestion : () => undefined}
+              />
+              {shared && (
+                <VoteButtons
+                  className="px-1"
+                  tally={tallies[s.id]}
+                  onVote={(v) => vote(s.id, v)}
+                />
+              )}
+            </div>
           ))
         )}
       </div>
 
       {/* Build route / itinerary CTA */}
-      <div className="pt-2 border-t border-neutral-100 flex flex-col gap-2 sticky bottom-0 bg-white pb-2">
+      <div className={`pt-2 border-t border-neutral-100 flex flex-col gap-2 sticky bottom-0 bg-white pb-2 ${canEdit ? "" : "hidden"}`}>
         {selectedIds.length > 0 && (
           <p className="text-xs text-neutral-500">
             {selectedIds.length} stop{selectedIds.length !== 1 ? "s" : ""} selected
@@ -471,7 +508,7 @@ export default function DiscoverPage({
             )}
 
             {/* Floating build button on map view — switch to List for the unordered option */}
-            {mobileView === "map" && selectedIds.length > 0 && (
+            {mobileView === "map" && selectedIds.length > 0 && canEdit && (
               <div className="fixed bottom-6 left-0 right-0 flex justify-center px-4 z-10">
                 <Button
                   className="shadow-lg px-8"

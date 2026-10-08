@@ -62,6 +62,18 @@ class Settings(BaseSettings):
     email_from: str = "Road Trip Planner <onboarding@resend.dev>"
     # Public origin of the frontend, used to build links in emails.
     frontend_url: str = "http://localhost:3000"
+    # Phase 17: Cloudflare R2 (S3-compatible) for trip photos. With no credentials the
+    # photo endpoints answer 503 and everything else works.
+    r2_account_id: str = ""
+    r2_access_key_id: str = ""
+    r2_secret_access_key: str = ""
+    r2_bucket: str = ""
+    # Public custom-domain origin for the bucket, used only for photos on trips whose
+    # recap is shared. Private trips always use short-lived presigned URLs.
+    r2_public_base_url: str = ""
+    photos_per_trip: int = 50
+    photos_per_user: int = 500
+    photo_max_upload_bytes: int = 5 * 1024 * 1024
     # Comma-separated emails allowed to view /admin/usage.
     admin_emails: str = ""
 

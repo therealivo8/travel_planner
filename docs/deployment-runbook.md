@@ -67,6 +67,7 @@ backup instead.
 | `NEXT_PUBLIC_MAPS_API_KEY` | Vercel | None — browser key, restrict by HTTP referrer |
 | `ORS_API_KEY` | Railway | None — regenerate at the HeiGIT account page |
 | `RESEND_API_KEY` | Railway | None — regenerate in the Resend dashboard, update, redeploy. Until it's set, users can't reset by email: outside production the link is only logged, and in production nothing is logged or sent. |
+| `R2_SECRET_ACCESS_KEY` | Railway | None — create a new token in Cloudflare, update, redeploy, then revoke the old one |
 | `SENTRY_DSN` / `NEXT_PUBLIC_SENTRY_DSN` | Railway / Vercel | None — DSNs are write-only, not secrets |
 | `DATABASE_URL` | Railway (auto-injected) | Don't set by hand; Railway manages it |
 
@@ -231,6 +232,46 @@ curl -s -o /dev/null -w '%{http_code} %{time_total}s\n' \
 ```
 
 ---
+
+## Collaborative trips (Phase 19)
+
+Trip owners invite people by link (optionally emailed through Resend, so the Phase 15 email
+settings apply) as **editors** or **viewers**. There are no new services or keys.
+
+- **Invites** are 14-day links, 10 uses by default, revocable by the owner. Only a sha256 of the
+  token is stored, so a lost link can't be recovered: create a new one. Creating invites is
+  limited to 20 per day per account.
+- **Concurrency:** edits to a trip, its stops and its itinerary carry an `If-Match` version. A
+  stale save gets `409 version_conflict` and the UI prompts a reload. Members' pages poll
+  `GET /trips/{id}/changes` every 20 s while the tab is visible; solo trips never poll.
+- **Security log events** (logger `security`): `trip.invite_created`, `trip.invite_accepted`,
+  `trip.invite_revoked`, `trip.member_role_changed`, `trip.member_removed`, `trip.member_left`.
+  These change who can read or edit a trip, so they're worth watching if access looks wrong.
+- Activity history is pruned after 90 days by the daily cleanup job.
+- Editors spend their **own** daily discovery quota and Google budget share, never the owner's;
+  photo storage counts toward the trip owner.
+
+## Trip photos on Cloudflare R2 (Phase 17)
+
+Photos go **browser → R2** on presigned PUT URLs, so image bytes never pass through Railway.
+Without R2 credentials the photo endpoints answer 503 and everything else works.
+
+1. Cloudflare dashboard → R2 → create a bucket (free tier: 10 GB, no egress fees).
+2. R2 → Manage API tokens → create a token with **Object Read & Write** on that bucket.
+3. Set in Railway (paste values **unquoted**): `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`,
+   `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`.
+4. **CORS on the bucket** (otherwise uploads fail in the browser): allow origin = your frontend
+   (e.g. `https://your-app.vercel.app`), methods `PUT` and `GET`, allowed headers `Content-Type`
+   and `Content-Length`.
+5. Optional: connect a custom domain to the bucket and set `R2_PUBLIC_BASE_URL` (e.g.
+   `https://photos.example.com`). It's used **only** for photos on trips whose recap is shared;
+   everything else gets 1-hour presigned URLs.
+
+Limits are 50 photos per trip, 500 per user and 5 MB per file (`PHOTOS_PER_TRIP`,
+`PHOTOS_PER_USER`, `PHOTO_MAX_UPLOAD_BYTES`). Deleting a photo, trip or account queues the R2
+objects in `pending_object_deletes`; the daily cleanup job deletes them, so an R2 outage never
+blocks a user's delete. Check the queue if storage looks too full:
+`SELECT count(*) FROM pending_object_deletes;` — rows that keep failing are dropped after 20 tries.
 
 ## API budgets and quotas (Phase 14)
 

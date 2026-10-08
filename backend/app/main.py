@@ -16,11 +16,16 @@ from app.api.expenses import router as expenses_router
 from app.api.export import router as export_router
 from app.api.health import router as health_router
 from app.api.itinerary import router as itinerary_router
+from app.api.map import router as map_router
+from app.api.members import router as members_router
 from app.api.navigation import router as navigation_router
 from app.api.packing import router as packing_router
+from app.api.photos import router as photos_router
 from app.api.radius import router as radius_router
+from app.api.recap import router as recap_router
 from app.api.routing import router as routing_router
 from app.api.sharing import router as sharing_router
+from app.api.social import router as social_router
 from app.api.trips import router as trips_router
 from app.api.usage import router as usage_router
 from app.api.waypoints import router as waypoints_router
@@ -32,6 +37,7 @@ from app.core.limiter import limiter
 from app.core.logging_config import configure_logging
 from app.core.security_log import log_rate_limited
 from app.core.sentry import init_sentry
+from app.core.trip_access import VersionConflictError, request_state
 
 # Order matters: logging must be configured, and Sentry initialized, before
 # the FastAPI app is constructed below, so every request the app handles is
@@ -99,6 +105,19 @@ async def _handle_user_quota(request: Request, exc: UserQuotaExceeded) -> JSONRe
     )
 
 
+async def _handle_version_conflict(request: Request, exc: VersionConflictError) -> JSONResponse:
+    return JSONResponse(
+        status_code=409,
+        content={
+            "detail": "Someone else just changed this trip. Reload to see their changes.",
+            "code": "version_conflict",
+            "version": exc.current_version,
+        },
+        headers={"X-Trip-Version": str(exc.current_version)},
+    )
+
+
+app.add_exception_handler(VersionConflictError, _handle_version_conflict)  # type: ignore[arg-type]
 app.add_exception_handler(BudgetExceeded, _handle_budget_exceeded)  # type: ignore[arg-type]
 app.add_exception_handler(UserQuotaExceeded, _handle_user_quota)  # type: ignore[arg-type]
 app.add_exception_handler(RateLimitExceeded, _log_and_handle_rate_limit)  # type: ignore[arg-type]
@@ -109,7 +128,26 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-Trip-Version"],
 )
+
+
+@app.middleware("http")
+async def trip_version_state(request: Request, call_next: Any) -> Response:
+    """Expose the caller's If-Match version to the access layer, and the trip's new version
+    (set by touch_trip) back to the caller as X-Trip-Version."""
+    if request.method in ("GET", "HEAD", "OPTIONS"):
+        return await call_next(request)  # type: ignore[no-any-return]
+    raw = request.headers.get("if-match", "").strip().strip('"')
+    state: dict[str, Any] = {"if_match": int(raw) if raw.isdigit() else None, "version": None}
+    token = request_state.set(state)
+    try:
+        response: Response = await call_next(request)
+    finally:
+        request_state.reset(token)
+    if state["version"] is not None:
+        response.headers["X-Trip-Version"] = str(state["version"])
+    return response
 
 
 @app.middleware("http")
@@ -143,3 +181,8 @@ app.include_router(expenses_router)
 app.include_router(weather_router)
 app.include_router(packing_router)
 app.include_router(navigation_router)
+app.include_router(photos_router)
+app.include_router(recap_router)
+app.include_router(map_router)
+app.include_router(members_router)
+app.include_router(social_router)

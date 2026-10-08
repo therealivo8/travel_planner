@@ -30,6 +30,13 @@ export interface Trip {
   currency: string;
   timezone: string;
   is_example: boolean;
+  share_recap: boolean;
+  in_progress: boolean;
+  ended: boolean;
+  my_role: TripRole;
+  owner_name: string | null;
+  member_count: number;
+  version: number;
   created_at: string;
   updated_at: string;
   waypoints: Waypoint[];
@@ -42,6 +49,9 @@ export interface TripListItem {
   total_drive_seconds: number | null;
   cover_image_url: string | null;
   is_example?: boolean;
+  role?: TripRole;
+  owner_name?: string | null;
+  route_thumb?: string | null;
   start_date: string | null;
   is_public: boolean;
   mode: TripMode;
@@ -65,6 +75,8 @@ export interface Waypoint {
   place_id: string | null;
   itinerary_day_id: string | null;
   scheduled_arrival_time: string | null;
+  visited_at?: string | null;
+  skipped?: boolean;
   created_at: string;
 }
 
@@ -77,6 +89,10 @@ export interface ItineraryWaypoint {
   day_position: number | null;
   scheduled_arrival_time: string | null;
   drive_seconds_from_prev: number | null;
+  stop_duration_minutes?: number | null;
+  notes?: string | null;
+  visited_at: string | null;
+  skipped: boolean;
 }
 
 export interface ItineraryDay {
@@ -119,6 +135,7 @@ export interface PublicTrip {
   units: "imperial" | "metric";
   waypoints: Waypoint[];
   days: ItineraryDay[];
+  recap?: Recap | null;
 }
 
 export interface RouteLeg {
@@ -342,4 +359,142 @@ export interface DayNavigation {
 export interface TripNavigation {
   trip: DayNavigation;
   days: Record<string, DayNavigation>;
+}
+
+// ── Phase 17: on the road & memories ────────────────────────────────────────
+
+export interface TripPhoto {
+  id: string;
+  waypoint_id: string | null;
+  itinerary_day_id: string | null;
+  width: number;
+  height: number;
+  caption: string | null;
+  taken_at: string | null;
+  url: string;
+}
+
+export interface RecapStop {
+  id: string;
+  label: string | null;
+  address: string;
+  visited: boolean;
+  skipped: boolean;
+  visited_at: string | null;
+  notes: string | null;
+  photos: TripPhoto[];
+}
+
+export interface RecapDay {
+  id: string;
+  day_number: number;
+  date: string | null;
+  title: string | null;
+  notes: string | null;
+  stops: RecapStop[];
+  photos: TripPhoto[];
+}
+
+export interface Recap {
+  title: string;
+  total_distance_meters: number | null;
+  total_drive_seconds: number | null;
+  days_count: number;
+  stops_planned: number;
+  stops_visited: number;
+  stops_skipped: number;
+  photo_count: number;
+  spent_by_category: Record<string, number> | null;
+  spent_total: number | null;
+  currency: string | null;
+  days: RecapDay[];
+}
+
+export interface MapTrip {
+  id: string;
+  title: string;
+  year: number;
+  route_polyline: string;
+  total_distance_meters: number | null;
+  stops_count: number;
+  visited_stops: { lat: number; lng: number; label: string | null }[];
+}
+
+export interface MyMap {
+  years: number[];
+  stats: {
+    trips: number;
+    total_distance_meters: number;
+    stops_visited: number;
+    longest_trip_title: string | null;
+    longest_trip_distance_meters: number | null;
+  };
+  trips: MapTrip[];
+}
+
+// ── Phase 19: collaboration ─────────────────────────────────────────────────
+
+export type TripRole = "owner" | "editor" | "viewer";
+
+export interface Member {
+  user_id: string;
+  name: string;
+  role: TripRole;
+  is_you: boolean;
+  joined_at: string | null;
+}
+
+export interface Invite {
+  id: string;
+  role: "editor" | "viewer";
+  expires_at: string;
+  max_uses: number;
+  uses: number;
+}
+
+export interface InviteCreated extends Invite {
+  url: string;
+  emailed: boolean;
+}
+
+export interface InvitePreview {
+  valid: boolean;
+  trip_title: string | null;
+  owner_name: string | null;
+  role: "editor" | "viewer" | null;
+}
+
+export type VoteKind = "radius" | "corridor" | "waypoint";
+
+export interface VoteTally {
+  up: number;
+  down: number;
+  mine: number;
+  voters: { user_id: string; name: string; value: number }[];
+}
+
+export type CommentKind = "trip" | "day" | "waypoint";
+
+export interface TripComment {
+  id: string;
+  user_id: string;
+  author: string;
+  body: string;
+  created_at: string;
+  edited_at: string | null;
+  deleted: boolean;
+  mine: boolean;
+}
+
+export interface Activity {
+  id: string;
+  trip_id: string;
+  kind: string;
+  summary: string;
+  created_at: string;
+}
+
+export interface Notifications {
+  unread: number;
+  items: (Activity & { trip_title: string })[];
 }

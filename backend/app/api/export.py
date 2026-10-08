@@ -11,10 +11,11 @@ from sqlalchemy.orm import selectinload
 
 from app.core.deps import CurrentUser
 from app.core.limiter import limiter
-from app.core.trips import get_owned_trip
+from app.core.trip_access import TripRole, get_trip_for
 from app.db.session import get_db
 from app.models.logistics import PackingItem
 from app.models.trip import ItineraryDay, Trip, Waypoint
+from app.models.user import User
 from app.services.export_formats import build_gpx, build_ics
 
 router = APIRouter(tags=["export"])
@@ -211,17 +212,7 @@ async def export_pdf(
             detail="PDF export requires WeasyPrint. Install it with: pip install weasyprint",
         )
 
-    result = await db.execute(
-        select(Trip)
-        .where(Trip.id == trip_id, Trip.user_id == current_user.id)
-        .options(
-            selectinload(Trip.waypoints),
-            selectinload(Trip.itinerary_days).selectinload(ItineraryDay.waypoints),
-        )
-    )
-    trip = result.scalar_one_or_none()
-    if trip is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Trip not found")
+    trip = await _load_for_export(db, trip_id, current_user)
 
     packing: list[PackingItem] | None = None
     if include_packing:
@@ -261,13 +252,16 @@ def _attachment_header(title: str, ext: str) -> str:
     return header
 
 
-async def _load_for_export(db: AsyncSession, trip_id: uuid.UUID, user_id: uuid.UUID) -> Trip:
-    return await get_owned_trip(
-        db,
+async def _load_for_export(db: AsyncSession, trip_id: uuid.UUID, user: User) -> Trip:
+    return await get_trip_for(
         trip_id,
-        user_id,
-        selectinload(Trip.waypoints),
-        selectinload(Trip.itinerary_days).selectinload(ItineraryDay.waypoints),
+        user,
+        db,
+        TripRole.VIEWER,
+        load=(
+            selectinload(Trip.waypoints),
+            selectinload(Trip.itinerary_days).selectinload(ItineraryDay.waypoints),
+        ),
     )
 
 
@@ -276,7 +270,7 @@ async def _load_for_export(db: AsyncSession, trip_id: uuid.UUID, user_id: uuid.U
 async def export_ics(
     request: Request, trip_id: uuid.UUID, current_user: CurrentUser, db: DB
 ) -> Response:
-    trip = await _load_for_export(db, trip_id, current_user.id)
+    trip = await _load_for_export(db, trip_id, current_user)
     return Response(
         content=build_ics(trip),
         media_type="text/calendar",
@@ -291,7 +285,7 @@ async def export_ics(
 async def export_gpx(
     request: Request, trip_id: uuid.UUID, current_user: CurrentUser, db: DB
 ) -> Response:
-    trip = await _load_for_export(db, trip_id, current_user.id)
+    trip = await _load_for_export(db, trip_id, current_user)
     return Response(
         content=build_gpx(trip),
         media_type="application/gpx+xml",

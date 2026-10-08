@@ -145,7 +145,7 @@ logged-out user goes through `/login?next=/invite/…` or registers first.
       "deleted" in the thread.
 - [ ] "Shared with me" appears on the dashboard, and duplicating a shared trip creates an
       independent trip owned by the user.
-- [ ] No Google Maps, ORS, or Anthropic call is made by any member or vote/comment feature.
+- [ ] No Google Maps or ORS call is made by any member or vote/comment feature.
 
 ## Notes for the Implementing Agent
 - Ship Part A as its own PR. It's a pure refactor and the riskiest part of this phase, because it
