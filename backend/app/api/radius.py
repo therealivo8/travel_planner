@@ -1,12 +1,15 @@
 import logging
 import uuid
-from typing import Annotated
+from datetime import UTC, datetime
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
+from starlette.concurrency import run_in_threadpool
 
+from app.core import budget, cache
 from app.core.deps import CurrentUser
 from app.core.limiter import limiter
 from app.db.session import get_db
@@ -58,6 +61,7 @@ async def discover(
     current_user: CurrentUser,
     db: DB,
     categories: list[str] | None = Query(None),
+    refresh: bool = Query(False, description="Bypass the cache (counts against the quota)"),
 ) -> RadiusDiscoverResponse:
     trip = await _get_radius_trip(trip_id, current_user.id, db)
 
@@ -67,14 +71,48 @@ async def discover(
             detail="max_drive_minutes is not set on this trip",
         )
 
+    origin_lat, origin_lng = float(trip.start_lat), float(trip.start_lng)
+    minutes = trip.max_drive_minutes
+    categories = categories or None
+    cache_key = cache.radius_cache_key(origin_lat, origin_lng, minutes, categories)
+
+    result: dict[str, Any] | None = None
+    updated_at: datetime | None = None
+    cached = False
+    if not refresh:
+        hit = await cache.get_discovery(db, cache_key)
+        if hit is not None:
+            result, updated_at = hit
+            cached = True
+
     try:
-        result = radius_svc.discover_suggestions(
-            origin_lat=float(trip.start_lat),
-            origin_lng=float(trip.start_lng),
-            max_drive_minutes=trip.max_drive_minutes,
-            categories=categories or None,
-            limit=50,
-        )
+        if result is None:
+            isochrone = await cache.get_isochrone(db, origin_lat, origin_lng, minutes)
+            nearby, matrix = radius_svc.estimate_units(categories)
+            units = {budget.NEARBY_SEARCH: nearby, budget.DISTANCE_MATRIX: matrix}
+            if isochrone is None:
+                units[budget.ORS_ISOCHRONE] = 1
+            # A cache hit above is free; only a real upstream run counts against the
+            # user's daily discovery quota and the shared budget.
+            await budget.charge(db, current_user.id, "radius_discover", units)
+            if isochrone is None:
+                isochrone = await run_in_threadpool(
+                    radius_svc.fetch_isochrone, origin_lat, origin_lng, minutes
+                )
+                await cache.put_isochrone(db, origin_lat, origin_lng, minutes, isochrone)
+            result = await run_in_threadpool(
+                radius_svc.discover_suggestions,
+                origin_lat=origin_lat,
+                origin_lng=origin_lng,
+                max_drive_minutes=minutes,
+                isochrone=isochrone,
+                categories=categories,
+                limit=50,
+            )
+            await cache.put_discovery(db, cache_key, result)
+            updated_at = datetime.now(UTC)
+    except (budget.BudgetExceeded, budget.UserQuotaExceeded):
+        raise  # rendered as 503/429 by the handlers in app.main
     except ValueError as exc:
         logger.exception("Discovery ValueError")
         raise HTTPException(
@@ -87,6 +125,8 @@ async def discover(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="Discovery failed. Please try again.",
         ) from exc
+
+    assert result is not None
 
     # Clear old suggestions before re-inserting
     await db.execute(delete(RadiusSuggestion).where(RadiusSuggestion.trip_id == trip_id))
@@ -121,6 +161,8 @@ async def discover(
     return RadiusDiscoverResponse(
         isochrone_geojson=trip.radius_isochrone_geojson,
         suggestions=[RadiusSuggestionOut.model_validate(sg) for sg in new_suggestions],
+        cached=cached,
+        updated_at=updated_at,
     )
 
 
@@ -185,6 +227,10 @@ async def select_suggestions(
             detail="One or more suggestion IDs not found for this trip",
         )
 
+    if body.generate_route:
+        # Charged before any mutation: a refusal rolls back the session.
+        await budget.charge(db, current_user.id, None, {budget.DIRECTIONS: 1})
+
     # Deselect all first, then select requested ones
     for sg in trip.radius_suggestions:
         sg.selected = False
@@ -223,7 +269,8 @@ async def select_suggestions(
 
         # Round-trip: start → stops → start
         try:
-            route_result = route_svc.calculate_route(
+            route_result = await run_in_threadpool(
+                route_svc.calculate_route,
                 origin_lat=float(trip.start_lat),
                 origin_lng=float(trip.start_lng),
                 dest_lat=float(trip.start_lat),
@@ -286,10 +333,33 @@ async def build_itinerary(
             detail="One or more suggestion IDs not found for this trip",
         )
 
+    if len(suggestions) > places.MAX_OPTIMIZE_STOPS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"Select at most {places.MAX_OPTIMIZE_STOPS} stops to build an itinerary — "
+                "ordering computes drive times between every pair of stops, which grows "
+                "quadratically."
+            ),
+        )
+
     budget_minutes = trip.max_drive_minutes * BUDGET_MULTIPLIER
 
+    if suggestions:
+        # Origin + stops, every pair; plus one Directions call for the final route.
+        await budget.charge(
+            db,
+            current_user.id,
+            "build_itinerary",
+            {
+                budget.DISTANCE_MATRIX: (len(suggestions) + 1) ** 2,
+                budget.DIRECTIONS: 1,
+            },
+        )
+
     try:
-        build_result = itinerary_builder.build_ordered_itinerary(
+        build_result = await run_in_threadpool(
+            itinerary_builder.build_ordered_itinerary,
             origin=(float(trip.start_lat), float(trip.start_lng)),
             stops=[
                 {

@@ -6,6 +6,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.core import budget
 from app.core.deps import CurrentUser
 from app.core.limiter import limiter
 from app.db.session import get_db
@@ -19,7 +20,7 @@ from app.schemas.trip import (
     ItineraryWaypointOut,
     SetArrivalTimeRequest,
 )
-from app.services import itinerary_builder
+from app.services import itinerary_builder, places
 
 router = APIRouter(prefix="/trips/{trip_id}/itinerary", tags=["itinerary"])
 
@@ -343,6 +344,20 @@ async def optimize_day(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="A day needs at least 3 stops to reorder",
         )
+
+    if len(ordered) > places.MAX_OPTIMIZE_STOPS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"A day can have at most {places.MAX_OPTIMIZE_STOPS} stops to reorder — "
+                "ordering computes drive times between every pair of stops, which grows "
+                "quadratically."
+            ),
+        )
+
+    await budget.charge(
+        db, current_user.id, "optimize_day", {budget.DISTANCE_MATRIX: len(ordered) ** 2}
+    )
 
     try:
         build = itinerary_builder.order_day_stops(

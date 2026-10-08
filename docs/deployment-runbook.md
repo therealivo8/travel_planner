@@ -231,6 +231,24 @@ curl -s -o /dev/null -w '%{http_code} %{time_total}s\n' \
 
 ---
 
+## API budgets and quotas (Phase 14)
+
+Every paid upstream call is reserved against a Postgres ledger (`api_usage_daily`) before it
+runs. When a SKU's daily or monthly budget is spent, the API answers `503 budget_exhausted`
+and the UI shows a "discovery is paused" banner. Per-user daily quotas answer `429 user_quota`.
+
+- **Change a budget without a deploy:** set `API_BUDGETS` (JSON) in Railway. Keys are SKU names such as
+  `google.nearby_search`; values are `{"day": n, "month": n}`.
+- **See usage:** sign in as an email listed in `ADMIN_EMAILS` and open `/admin/usage`.
+- **Sentry:** a warning fires once per SKU per day when a SKU passes 80% of its monthly budget.
+- **Daily cleanup** (runs at startup and every 24h in the API process) deletes unselected
+  suggestions older than 30 days and expired cache rows.
+- **Risk — legacy Google APIs:** Directions, Distance Matrix and Nearby Search use the *legacy*
+  endpoints. Google stopped offering legacy APIs to *new* Cloud projects in 2025, so if this
+  project is ever recreated, those calls will fail until migrated to the Routes and Places (New) APIs.
+- **Check Google's current Service Specific Terms** before raising `DISCOVERY_CACHE_TTL_DAYS`
+  above its 7-day default; most Places content may only be cached temporarily.
+
 ## Cost
 
 Railway Hobby is ~$5/month minimum (no permanently free tier as of 2026); Vercel

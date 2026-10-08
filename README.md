@@ -193,6 +193,8 @@ Make sure your repo is on GitHub. Both platforms deploy directly from it.
 | `MAPS_API_KEY` | Your server-side Google Maps key (Directions, Geocoding, Places, Distance Matrix) |
 | `ORS_API_KEY` | Your OpenRouteService key (required for Radius Explorer mode) |
 | `SENTRY_DSN` | Optional — the backend Sentry project's DSN. Leave unset to disable error tracking. |
+| `API_BUDGETS` | Optional — JSON overriding the per-SKU daily/monthly upstream budgets, e.g. `{"google.nearby_search":{"day":150,"month":4500}}`. Defaults sit at ~90% of Google's free allowances; see `app/config.py`. |
+| `ADMIN_EMAILS` | Optional — comma-separated emails allowed to open `/admin/usage`. |
 
 > **Paste values unquoted.** Railway's dashboard stores the field verbatim, unlike a
 > `.env` file where python-dotenv strips surrounding quotes. A quoted key becomes

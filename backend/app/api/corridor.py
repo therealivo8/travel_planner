@@ -1,12 +1,15 @@
 import logging
 import uuid
-from typing import Annotated
+from datetime import UTC, datetime
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
+from starlette.concurrency import run_in_threadpool
 
+from app.core import budget, cache
 from app.core.deps import CurrentUser
 from app.core.limiter import limiter
 from app.db.session import get_db
@@ -59,23 +62,54 @@ async def discover_corridor(
     db: DB,
     categories: list[str] | None = Query(None),
     max_detour_minutes: int = Query(15, ge=1, le=60),
+    refresh: bool = Query(False, description="Bypass the cache (counts against the quota)"),
 ) -> CorridorDiscoverResponse:
     trip = await _get_p2p_trip_with_route(trip_id, current_user.id, db)
     assert trip.end_lat is not None and trip.end_lng is not None
     assert trip.route_polyline is not None and trip.total_drive_seconds is not None
 
+    categories = categories or None
+    cache_key = cache.corridor_cache_key(trip.route_polyline, max_detour_minutes, categories)
+
+    suggestions: list[dict[str, Any]] | None = None
+    updated_at: datetime | None = None
+    cached = False
+    if not refresh:
+        hit = await cache.get_discovery(db, cache_key)
+        if hit is not None:
+            payload, updated_at = hit
+            suggestions = payload["suggestions"]
+            cached = True
+
     try:
-        suggestions = corridor_svc.discover_corridor_suggestions(
-            origin_lat=float(trip.start_lat),
-            origin_lng=float(trip.start_lng),
-            dest_lat=float(trip.end_lat),
-            dest_lng=float(trip.end_lng),
-            route_polyline=trip.route_polyline,
-            direct_drive_seconds=trip.total_drive_seconds,
-            max_detour_minutes=max_detour_minutes,
-            categories=categories or None,
-            limit=50,
-        )
+        if suggestions is None:
+            route_km = (trip.total_distance_meters or 0) / 1000
+            nearby, matrix = corridor_svc.estimate_units(route_km, categories)
+            # A cache hit above is free; only a real upstream run counts against the
+            # user's daily discovery quota and the shared budget. Reserved up front so a
+            # run never starts and then fails halfway on the budget.
+            await budget.charge(
+                db,
+                current_user.id,
+                "corridor_discover",
+                {budget.NEARBY_SEARCH: nearby, budget.DISTANCE_MATRIX: matrix},
+            )
+            suggestions = await run_in_threadpool(
+                corridor_svc.discover_corridor_suggestions,
+                origin_lat=float(trip.start_lat),
+                origin_lng=float(trip.start_lng),
+                dest_lat=float(trip.end_lat),
+                dest_lng=float(trip.end_lng),
+                route_polyline=trip.route_polyline,
+                direct_drive_seconds=trip.total_drive_seconds,
+                max_detour_minutes=max_detour_minutes,
+                categories=categories,
+                limit=50,
+            )
+            await cache.put_discovery(db, cache_key, {"suggestions": suggestions})
+            updated_at = datetime.now(UTC)
+    except (budget.BudgetExceeded, budget.UserQuotaExceeded):
+        raise  # rendered as 503/429 by the handlers in app.main
     except ValueError as exc:
         logger.exception("Corridor discovery ValueError")
         raise HTTPException(
@@ -89,6 +123,7 @@ async def discover_corridor(
             detail="Corridor discovery failed. Please try again.",
         ) from exc
 
+    assert suggestions is not None
     await db.execute(delete(CorridorSuggestion).where(CorridorSuggestion.trip_id == trip_id))
 
     new_suggestions: list[CorridorSuggestion] = []
@@ -117,6 +152,8 @@ async def discover_corridor(
     return CorridorDiscoverResponse(
         suggestions=[CorridorSuggestionOut.model_validate(sg) for sg in new_suggestions],
         max_detour_seconds=max_detour_minutes * 60,
+        cached=cached,
+        updated_at=updated_at,
     )
 
 
@@ -181,6 +218,10 @@ async def select_corridor_suggestions(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="One or more suggestion IDs not found for this trip",
         )
+
+    if body.insert_as_waypoints:
+        # Charged before any mutation: a refusal rolls back the session.
+        await budget.charge(db, current_user.id, None, {budget.DIRECTIONS: 1})
 
     for sg in trip.corridor_suggestions:
         sg.selected = False

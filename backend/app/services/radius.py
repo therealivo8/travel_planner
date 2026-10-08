@@ -1,7 +1,7 @@
 """Radius mode discovery service.
 
 Pipeline:
-1. Fetch isochrone polygon from OpenRouteService.
+1. Take the isochrone polygon (fetched from OpenRouteService and cached by the API layer).
 2. Run Google Places Nearby Search within the bounding box.
 3. Post-filter with Google Distance Matrix to confirm ≤ max_drive_minutes.
 4. Rank into 5-minute drive-time buckets, then by quality_score (rating x review
@@ -76,18 +76,32 @@ def _bbox_from_polygon(geometry: dict[str, Any]) -> tuple[float, float, float, f
     return min(lats), min(lngs), max(lats), max(lngs)
 
 
+# Distance Matrix is billed per element, so confirm drive times for only the best
+# candidates by quality_score (the ones that would be ranked first anyway).
+MAX_DRIVE_CANDIDATES = 60
+NEARBY_PAGES_PER_TYPE = places.MAX_PAGES_PER_TYPE
+
+
+def estimate_units(categories: list[str] | None) -> tuple[int, int]:
+    """(Nearby Search calls, Distance Matrix elements) a run can use, for budgeting."""
+    nearby = len(places.resolve_place_types(categories)) * NEARBY_PAGES_PER_TYPE
+    return nearby, MAX_DRIVE_CANDIDATES
+
+
 def discover_suggestions(
     origin_lat: float,
     origin_lng: float,
     max_drive_minutes: int,
+    isochrone: dict[str, Any],
     categories: list[str] | None = None,
     limit: int = 50,
 ) -> dict[str, Any]:
-    """Full discovery pipeline. Returns {isochrone_geojson, suggestions}."""
-    gmaps = places.get_client()
+    """Full discovery pipeline. Returns {isochrone_geojson, suggestions}.
 
-    # 1. Isochrone
-    isochrone = fetch_isochrone(origin_lat, origin_lng, max_drive_minutes)
+    The isochrone is passed in (fetched/cached by the API layer, which also budgets the
+    ORS call) so this service stays free of database code.
+    """
+    gmaps = places.get_client()
 
     # 2. Compute search radius from bbox diagonal (metres)
     min_lat, min_lng, max_lat, max_lng = _bbox_from_polygon(isochrone)
@@ -105,6 +119,7 @@ def discover_suggestions(
     # 3b. Drop low-rating/low-review noise before spending Distance Matrix calls
     # confirming drive times for places we'd exclude anyway.
     found = places.filter_by_quality(found)
+    found = places.top_by_quality(found, MAX_DRIVE_CANDIDATES)
 
     # 4. Distance Matrix filter
     max_drive_seconds = max_drive_minutes * 60

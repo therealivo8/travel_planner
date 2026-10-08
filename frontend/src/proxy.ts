@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server";
 
-const PROTECTED_PREFIXES = ["/trips"];
+const PROTECTED_PREFIXES = ["/trips", "/admin"];
 const AUTH_ROUTES = ["/login", "/register"];
 const REFRESH_COOKIE = "refresh_token";
 
@@ -28,5 +28,5 @@ const isProtected = PROTECTED_PREFIXES.some((p) => pathname.startsWith(p));
 }
 
 export const config = {
-  matcher: ["/trips/:path*", "/login", "/register"],
+  matcher: ["/trips/:path*", "/admin/:path*", "/login", "/register"],
 };

@@ -99,3 +99,20 @@ def log_quota_exceeded(provider: str, response: httpx.Response) -> None:
         f"{provider} quota exceeded (HTTP {response.status_code})",
         level="warning",
     )
+
+
+def log_budget_warning(sku: str, month_units: int, month_cap: int) -> None:
+    """Signal that a SKU has passed 80% of its monthly budget (once per SKU per day)."""
+    upstream_logger.warning(
+        "upstream.budget_warning",
+        extra={
+            "event": "upstream.budget_warning",
+            "sku": sku,
+            "month_units": month_units,
+            "month_cap": month_cap,
+        },
+    )
+    capture_message(
+        f"{sku} has used {month_units}/{month_cap} of its monthly budget",
+        level="warning",
+    )

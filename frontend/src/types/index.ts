@@ -170,6 +170,9 @@ export interface RadiusSuggestion {
 export interface RadiusDiscoverResponse {
   isochrone_geojson: GeoJSONPolygon | Record<string, never>;
   suggestions: RadiusSuggestion[];
+  /** Set by POST /discover: served from the shared cache, and when the data was fetched. */
+  cached?: boolean;
+  updated_at?: string | null;
 }
 
 export interface GeoJSONPolygon {
@@ -206,6 +209,30 @@ export interface CorridorSuggestion {
 export interface CorridorDiscoverResponse {
   suggestions: CorridorSuggestion[];
   max_detour_seconds: number;
+  cached?: boolean;
+  updated_at?: string | null;
+}
+
+export interface MyQuota {
+  remaining: Record<string, number>;
+  limits: Record<string, number>;
+  resets_at: string;
+}
+
+export interface SkuUsage {
+  sku: string;
+  today: number;
+  month: number;
+  day_budget: number | null;
+  month_budget: number | null;
+  free_allowance: number | null;
+  estimated_cost_usd: number;
+}
+
+export interface AdminUsage {
+  month_start: string;
+  skus: SkuUsage[];
+  estimated_total_cost_usd: number;
 }
 
 export interface CorridorSelectRequest {

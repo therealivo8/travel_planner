@@ -47,6 +47,9 @@ SEARCH_TYPES = [
 # Distance Matrix: max 25 destinations per request
 MATRIX_BATCH = 25
 
+# Distance Matrix elements are billed, and pairwise optimization is N^2, so cap N.
+MAX_OPTIMIZE_STOPS = 15
+
 # Nearby Search pagination: Google returns up to 20 results per page, up to 3
 # pages (60 results) per query via next_page_token. Without this, ranking only
 # ever sees the first ~20 "prominent" results per place type — often a mix of
@@ -73,6 +76,11 @@ NEXT_PAGE_DELAY_SECONDS = 2.0
 # and hoping the sort buries the noise far enough down.
 MIN_RATING = 4.0
 MIN_USER_RATINGS_TOTAL = 10
+
+
+def top_by_quality(places_list: list[dict[str, Any]], n: int) -> list[dict[str, Any]]:
+    """Keep the n highest quality_score candidates (stable for ties)."""
+    return sorted(places_list, key=lambda p: -quality_score(p))[:n]
 
 
 def get_client() -> googlemaps.Client:
@@ -173,6 +181,29 @@ def _nearby_search_one_type(
     return results
 
 
+def resolve_place_types(
+    categories: list[str] | None,
+    default_types: list[str] | None = None,
+    max_types: int = 5,
+) -> list[str]:
+    """Google place types to query for the selected `categories`.
+
+    Falls back to `default_types` (default: SEARCH_TYPES) when no category is selected or
+    none maps to a type. Capped at `max_types` — each type is one billable Nearby Search
+    call per search point, so callers can compute their call count up front from this.
+    """
+    fallback = default_types if default_types is not None else SEARCH_TYPES
+    if not categories:
+        return fallback[:max_types]
+    type_map_inv: dict[str, list[str]] = {}
+    for gtype, cat in TYPE_MAP.items():
+        type_map_inv.setdefault(cat, []).append(gtype)
+    filtered: list[str] = []
+    for cat in categories:
+        filtered.extend(type_map_inv.get(cat, []))
+    return (filtered or fallback)[:max_types]
+
+
 def nearby_search(
     gmaps: googlemaps.Client,
     origin_lat: float,
@@ -180,8 +211,9 @@ def nearby_search(
     radius_meters: int,
     categories: list[str] | None = None,
     paginate: bool = False,
+    place_types: list[str] | None = None,
 ) -> list[dict[str, Any]]:
-    """Run Nearby Search across up to 5 place types.
+    """Run Nearby Search across up to 5 place types (or the explicit `place_types`).
 
     `paginate=True` follows Google's next_page_token up to MAX_PAGES_PER_TYPE
     pages per type, giving a deeper pool for quality-based ranking to work with
@@ -196,17 +228,7 @@ def nearby_search(
     Returns deduplicated raw place dicts; does not filter by rating — callers
     that want a quality floor should use filter_by_quality() afterward.
     """
-    place_types = SEARCH_TYPES
-    if categories:
-        type_map_inv: dict[str, list[str]] = {}
-        for gtype, cat in TYPE_MAP.items():
-            type_map_inv.setdefault(cat, []).append(gtype)
-        filtered = []
-        for cat in categories:
-            filtered.extend(type_map_inv.get(cat, []))
-        place_types = filtered if filtered else SEARCH_TYPES
-
-    types_to_query = place_types[:5]  # limit to first 5 types to stay under quota
+    types_to_query = place_types or resolve_place_types(categories)
 
     # Query each place type concurrently rather than sequentially. This matters
     # most when paginate=True: each extra page requires a ~2s mandatory Google

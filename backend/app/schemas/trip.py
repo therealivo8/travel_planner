@@ -204,6 +204,10 @@ class RadiusSuggestionOut(BaseModel):
 class RadiusDiscoverResponse(BaseModel):
     isochrone_geojson: dict[str, Any]
     suggestions: list[RadiusSuggestionOut]
+    # Set by POST .../discover only: whether the result came from the shared cache, and
+    # when the underlying Google data was fetched.
+    cached: bool = False
+    updated_at: datetime | None = None
 
 
 class RadiusSelectRequest(BaseModel):
@@ -319,6 +323,8 @@ class CorridorSuggestionOut(BaseModel):
 class CorridorDiscoverResponse(BaseModel):
     suggestions: list[CorridorSuggestionOut]
     max_detour_seconds: int
+    cached: bool = False
+    updated_at: datetime | None = None
 
 
 class CorridorSelectRequest(BaseModel):

@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.core import budget
 from app.core.deps import CurrentUser
 from app.core.limiter import limiter
 from app.db.session import get_db
@@ -51,6 +52,8 @@ async def calculate_route(
 
     ordered_waypoints = sorted(trip.waypoints, key=lambda w: w.position)
     waypoint_coords = [(float(w.lat), float(w.lng)) for w in ordered_waypoints]
+
+    await budget.charge(db, current_user.id, "calculate_route", {budget.DIRECTIONS: 1})
 
     try:
         result = route_svc.calculate_route(
@@ -130,9 +133,11 @@ async def get_route(
 @limiter.limit("30/hour")
 async def geocode(
     request: Request,
+    db: DB,
     q: str = Query(..., description="Address to geocode"),
 ) -> GeocodeResult | None:
     """Proxy to Google Geocoding API — keeps the API key server-side."""
+    await budget.charge(db, None, None, {budget.GEOCODE: 1})
     try:
         result = route_svc.geocode_address(q)
     except ValueError as exc:

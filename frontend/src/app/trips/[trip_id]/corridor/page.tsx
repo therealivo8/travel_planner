@@ -18,6 +18,8 @@ import { GoogleMapsProvider, TripMap } from "@/components/routing";
 import { SuggestionCard } from "@/components/radius";
 import { cn } from "@/lib/utils";
 import { PageShell } from "@/components/layout/PageShell";
+import { BudgetPausedBanner, DiscoveryMeta } from "@/components/common";
+import { useDiscoveryQuota } from "@/hooks/useDiscoveryQuota";
 import type { Trip, CorridorSuggestion, SuggestionCategory } from "@/types";
 
 const CATEGORIES: { value: SuggestionCategory | "all"; label: string }[] = [
@@ -55,6 +57,12 @@ export default function CorridorPage({
   const [error, setError] = useState<string | null>(null);
   const [initialLoading, setInitialLoading] = useState(true);
   const [mobileView, setMobileView] = useState<"map" | "list">("map");
+  const [cacheInfo, setCacheInfo] = useState<{ cached: boolean; updatedAt: string | null }>({
+    cached: false,
+    updatedAt: null,
+  });
+  const quota = useDiscoveryQuota("corridor_discover");
+  const { noteError, reload: reloadQuota } = quota;
   const hasRunDiscovery = useRef(false);
 
   const loadTrip = useCallback(async () => {
@@ -64,22 +72,31 @@ export default function CorridorPage({
   }, [trip_id]);
 
   const runDiscovery = useCallback(
-    async (categoriesFilter?: SuggestionCategory[], detourMinutes?: number) => {
+    async (
+      categoriesFilter?: SuggestionCategory[],
+      detourMinutes?: number,
+      refresh = false
+    ) => {
       setDiscovering(true);
       setError(null);
       try {
         const result = await discoverCorridor(trip_id, {
           categories: categoriesFilter?.length ? categoriesFilter : undefined,
           maxDetourMinutes: detourMinutes ?? maxDetourMinutes,
+          refresh,
         });
         setSuggestions(result.suggestions);
+        setCacheInfo({ cached: result.cached ?? false, updatedAt: result.updated_at ?? null });
+        void reloadQuota();
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Discovery failed");
+        if (!noteError(err)) {
+          setError(err instanceof Error ? err.message : "Discovery failed");
+        }
       } finally {
         setDiscovering(false);
       }
     },
-    [trip_id, maxDetourMinutes]
+    [trip_id, maxDetourMinutes, noteError, reloadQuota]
   );
 
   // On mount: load trip, then try loading cached suggestions. If none, run discovery.
@@ -196,6 +213,7 @@ export default function CorridorPage({
             key={minutes}
             type="button"
             onClick={() => handleDetourChange(minutes)}
+            disabled={quota.paused}
             className={cn(
               "rounded-full px-3 py-1 text-xs font-medium border transition-colors",
               maxDetourMinutes === minutes
@@ -232,12 +250,18 @@ export default function CorridorPage({
         variant="outline"
         size="sm"
         className="gap-1.5 self-start"
-        onClick={() => runDiscovery()}
-        disabled={discovering}
+        onClick={() => runDiscovery(undefined, undefined, true)}
+        disabled={discovering || quota.paused || quota.remaining === 0}
       >
         <RefreshCw className={cn("h-3.5 w-3.5", discovering && "animate-spin")} />
-        {discovering ? "Searching…" : "Re-run discovery"}
+        {discovering ? "Searching…" : "Refresh discovery"}
       </Button>
+      <DiscoveryMeta
+        remaining={quota.remaining}
+        cached={cacheInfo.cached}
+        updatedAt={cacheInfo.updatedAt}
+      />
+      {quota.paused && <BudgetPausedBanner resetsAt={quota.pausedUntil} />}
 
       {error && (
         <p className="text-xs text-error-500 bg-red-50 border border-red-200 rounded-lg px-3 py-2">

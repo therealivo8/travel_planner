@@ -19,6 +19,46 @@ class Settings(BaseSettings):
     # project, so this is not treated as a secret the way SECRET_KEY is.
     sentry_dsn: str = ""
 
+    # Phase 14 cost guardrails. Budgets are units per UTC day / calendar month per
+    # upstream SKU, enforced by app.core.budget before each paid call. Overridable as
+    # one JSON env var (API_BUDGETS) so Railway can change them without a deploy.
+    # Defaults sit at ~90% of each provider's free allowance, so normal use costs $0.
+    api_budgets: dict[str, dict[str, int]] = {
+        "google.nearby_search": {"day": 150, "month": 4500},  # Pro free = 5,000
+        "google.distance_matrix_element": {"day": 300, "month": 9000},  # Essentials = 10,000
+        "google.directions": {"day": 300, "month": 9000},
+        "google.geocode": {"day": 300, "month": 9000},
+        "ors.isochrone": {"day": 400, "month": 1_000_000},  # ORS hard limit 500/day
+    }
+    # Free monthly allowance and overage price per unit, used only for the usage page's
+    # estimated-cost column.
+    api_free_allowance: dict[str, int] = {
+        "google.nearby_search": 5000,
+        "google.distance_matrix_element": 10000,
+        "google.directions": 10000,
+        "google.geocode": 10000,
+    }
+    api_unit_price_usd: dict[str, float] = {
+        "google.nearby_search": 0.032,
+        "google.distance_matrix_element": 0.005,
+        "google.directions": 0.005,
+        "google.geocode": 0.005,
+    }
+    # Per-user daily caps on expensive actions (Postgres-backed, survive deploys).
+    user_daily_quotas: dict[str, int] = {
+        "radius_discover": 8,
+        "corridor_discover": 4,
+        "optimize_day": 20,
+        "build_itinerary": 20,
+        "calculate_route": 40,
+    }
+    discovery_cache_ttl_days: int = 7
+    isochrone_cache_ttl_days: int = 90
+    # Unselected stored suggestions older than this are deleted daily (Google terms).
+    suggestion_retention_days: int = 30
+    # Comma-separated emails allowed to view /admin/usage.
+    admin_emails: str = ""
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
     @field_validator("database_url", mode="after")
@@ -39,6 +79,10 @@ class Settings(BaseSettings):
     @property
     def cors_origins_list(self) -> list[str]:
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
+
+    @property
+    def admin_emails_list(self) -> list[str]:
+        return [e.strip().lower() for e in self.admin_emails.split(",") if e.strip()]
 
     @model_validator(mode="after")
     def _forbid_default_secret_key_in_production(self) -> "Settings":

@@ -73,6 +73,23 @@ async function request<T>(path: string, options: RequestOptions = {}, isRetry = 
     throw new SessionExpiredError();
   }
 
+  // Phase 14 cost guardrails: the backend sends a machine-readable code and reset time.
+  if (res.status === 429 || res.status === 503) {
+    const body = (await res.clone().json().catch(() => null)) as {
+      detail?: string;
+      code?: string;
+      resets_at?: string;
+    } | null;
+    if (body?.code === "budget_exhausted" || body?.code === "user_quota") {
+      throw new ApiError(
+        body.detail ?? "This action is temporarily unavailable.",
+        res.status,
+        body.code,
+        body.resets_at ?? null
+      );
+    }
+  }
+
   if (res.status === 429) {
     const retryAfter = res.headers.get("Retry-After");
     const seconds = retryAfter ? parseInt(retryAfter, 10) : null;
@@ -91,6 +108,19 @@ async function request<T>(path: string, options: RequestOptions = {}, isRetry = 
   if (res.status === 204) return undefined as T;
 
   return res.json() as Promise<T>;
+}
+
+/** A guardrail refusal: `budget_exhausted` (shared API budget, 503) or `user_quota` (429). */
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly code: "budget_exhausted" | "user_quota",
+    readonly resetsAt: string | null
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
 }
 
 /** Thrown when a request 401s and the subsequent refresh attempt also fails. */
@@ -126,20 +156,23 @@ export function geocodeAddress(q: string) {
 }
 
 import type {
+  AdminUsage,
   CorridorDiscoverResponse,
   CorridorSelectRequest,
   ItineraryBuildOut,
   ItineraryBuildRequest,
+  MyQuota,
   RadiusDiscoverResponse,
   RadiusSelectRequest,
   Trip,
 } from "@/types";
 
-export function discoverRadius(tripId: string, categories?: string[]) {
-  const params = categories?.length
-    ? "?" + categories.map((c) => `categories=${encodeURIComponent(c)}`).join("&")
-    : "";
-  return api.post<RadiusDiscoverResponse>(`/trips/${tripId}/radius/discover${params}`);
+export function discoverRadius(tripId: string, categories?: string[], refresh = false) {
+  const params = new URLSearchParams();
+  categories?.forEach((c) => params.append("categories", c));
+  if (refresh) params.set("refresh", "true");
+  const qs = params.toString();
+  return api.post<RadiusDiscoverResponse>(`/trips/${tripId}/radius/discover${qs ? `?${qs}` : ""}`);
 }
 
 export function getRadiusSuggestions(tripId: string) {
@@ -160,9 +193,10 @@ export function buildRadiusItinerary(tripId: string, body: ItineraryBuildRequest
 
 export function discoverCorridor(
   tripId: string,
-  opts?: { categories?: string[]; maxDetourMinutes?: number }
+  opts?: { categories?: string[]; maxDetourMinutes?: number; refresh?: boolean }
 ) {
   const params = new URLSearchParams();
+  if (opts?.refresh) params.set("refresh", "true");
   opts?.categories?.forEach((c) => params.append("categories", c));
   if (opts?.maxDetourMinutes != null) {
     params.set("max_detour_minutes", String(opts.maxDetourMinutes));
@@ -183,4 +217,12 @@ export function selectCorridorSuggestions(tripId: string, body: CorridorSelectRe
 
 export function deselectCorridorSuggestion(tripId: string, suggestionId: string) {
   return api.delete(`/trips/${tripId}/corridor/suggestions/${suggestionId}/select`);
+}
+
+export function getMyQuota() {
+  return api.get<MyQuota>("/usage/me");
+}
+
+export function getAdminUsage() {
+  return api.get<AdminUsage>("/admin/usage");
 }

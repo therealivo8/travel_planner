@@ -14,7 +14,7 @@ Mapbox bills on usage with no mechanism to hard-cap spend — if traffic spikes,
 
 - **Per-API quota limits** — set a daily request ceiling per API (e.g. cap Directions at 500 requests/day)
 - **Billing alerts** — email/SMS when spend crosses a threshold
-- **$200/month free credit** — covers substantial hobby traffic before any charges
+- **Free monthly allowance per SKU** — since March 2025 this replaces the old $200/month credit, which no longer exists (see [`cost-model.md`](./cost-model.md))
 
 For a project at this stage, predictable billing control outweighs Mapbox's marginally cheaper per-request rates.
 
@@ -36,6 +36,8 @@ For a project at this stage, predictable billing control outweighs Mapbox's marg
 
 ## Recommended Google Cloud Quota Setup
 
+> The app now enforces its own budgets in Postgres before every paid call (Phase 14, `app/core/budget.py`) and degrades gracefully when they run out. The Cloud Console quotas below are a second, blunt backstop: when one trips, the app only sees an opaque upstream error.
+
 Set these limits in **Google Cloud Console → APIs & Services → [API name] → Quotas**:
 
 | API | Suggested daily cap | Rationale |
@@ -54,7 +56,7 @@ Set a **billing alert at $10/month** as an early warning before hitting meaningf
 
 The isochrone (drive-time polygon) still uses **OpenRouteService**, which has the same no-hard-cap problem as Mapbox. Options:
 
-1. **Keep ORS** — free tier is 2,000 requests/day which is generous for hobby use; monitor manually
+1. **Keep ORS** — the free tier allows **500 isochrone requests/day** (the 2,000/day figure is the *directions* endpoint's limit). Phase 14 caches isochrones for 90 days and budgets the daily count, so this is comfortable for hobby use
 2. **Replace with Google** — Google does not have an isochrone API natively; would require computing an approximation from Distance Matrix results (complex, higher cost)
 3. **Self-host ORS** — open source, can run on a small VPS if ORS billing becomes a concern
 
